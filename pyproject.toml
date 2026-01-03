@@ -1,0 +1,16 @@
+[project]
+name = "voice-notion"
+version = "0.1.0"
+description = "Voice Notion - Voice-to-Notion Automation"
+authors = [
+    {name = "YuChieh-Chiu",email = "81817517+YuChieh-Chiu@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

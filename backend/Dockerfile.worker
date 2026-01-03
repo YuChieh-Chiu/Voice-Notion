@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies for faster-whisper
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install poetry==1.8.0
+
+# Copy dependency files
+COPY pyproject.toml ./
+
+# Install dependencies (WITH worker group)
+RUN poetry config virtualenvs.create false \
+    && poetry install --no-root --with worker
+
+# Copy application code
+COPY . .
+
+CMD ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]

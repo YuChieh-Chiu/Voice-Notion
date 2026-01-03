@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "voice-notion-backend"
+version = "0.1.0"
+description = "Siri Notion Voice Note Backend"
+authors = ["Yu-Chieh Chiu"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+celery = {extras = ["redis"], version = "^5.4.0"}
+redis = "^5.2.0"
+google-genai = "^0.3.0"
+line-bot-sdk = "^3.15.0"
+notion-client = "^3.0.0"
+python-multipart = "^0.0.18"
+pydantic-settings = "^2.7.0"
+
+[tool.poetry.group.worker]
+optional = true
+
+[tool.poetry.group.worker.dependencies]
+faster-whisper = "^1.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
