@@ -2,7 +2,6 @@
 STT Service - Faster-Whisper
 使用 faster-whisper 於 CPU 執行語音轉文字
 """
-from faster_whisper import WhisperModel
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -12,6 +11,12 @@ class STTService:
     """Speech-to-Text Service"""
     
     def __init__(self):
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError:
+            logger.error("faster-whisper is not installed. This service should only run in a worker container.")
+            raise
+            
         # TODO: 後續如果有接上 Kaggle API，可以考慮換更強的 model
         # 使用 small model, CPU, int8 量化
         self.model = WhisperModel("small", device="cpu", compute_type="int8")
