@@ -1,26 +1,32 @@
-[tool.poetry]
-name = "voice-notion-backend"
+[project]
+name = "voice-notion"
 version = "0.1.0"
-description = "Siri Notion Voice Note Backend"
-authors = ["Yu-Chieh Chiu"]
+description = "Voice Notion - Voice-to-Notion Automation"
+authors = [
+    {name = "YuChieh-Chiu", email = "81817517+YuChieh-Chiu@users.noreply.github.com"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<4"
+dependencies = [
+    "fastapi (>=0.128.0,<0.129.0)", 
+    "uvicorn[standard] (>=0.40.0,<0.41.0)", 
+    "celery[redis] (>=5.6.1,<6.0.0)", 
+    "google-genai (>=1.56.0,<2.0.0)", 
+    "line-bot-sdk (>=3.21.0,<4.0.0)", 
+    "notion-client (>=2.7.0,<3.0.0)", 
+    "python-multipart (>=0.0.21,<0.0.22)", 
+    "pydantic-settings (>=2.12.0,<3.0.0)"
+]
 
-[tool.poetry.dependencies]
-python = "^3.10"
-fastapi = "^0.115.0"
-uvicorn = {extras = ["standard"], version = "^0.32.0"}
-celery = {extras = ["redis"], version = "^5.4.0"}
-redis = "^5.2.0"
-google-genai = "^0.3.0"
-line-bot-sdk = "^3.15.0"
-notion-client = "^3.0.0"
-python-multipart = "^0.0.18"
-pydantic-settings = "^2.7.0"
 
-[tool.poetry.group.worker]
-optional = true
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.worker.dependencies]
-faster-whisper = "^1.1.0"
+faster-whisper = "^1.2.1"
+
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.0"
+pytest = "^9.0.2"
+
