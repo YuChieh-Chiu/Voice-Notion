@@ -67,7 +67,7 @@ backend/
 │   ├── core/             # 核心模組
 │   ├── prompts/          # LLM Prompts & Templates ✨
 │   │   ├── routing.py    # 路由判斷 prompt
-│   │   └── templates/    # meeting/idea/todo/general
+│   │   └── templates/    # meeting/idea/todo/general (詳見 [docs/PROMPT_TEMPLATES.md](docs/PROMPT_TEMPLATES.md))
 │   ├── routes/           # API 路由
 │   ├── schemas/          # Pydantic Schema
 │   ├── services/         # 業務邏輯

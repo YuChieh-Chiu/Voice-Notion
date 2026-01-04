@@ -19,6 +19,7 @@
 | **AI Summary** | **Gemini Flash Lite (兩階段)** | Stage 1: 路由判斷 (Structured Output)。Stage 2: 依模板生成摘要。 |
 | **Notification** | **Line Messaging API** | 主動推播結果給使用者。 |
 | **Database** | **Notion API** | 儲存筆記內容。 |
+| **Parser** | **markdown-it-py** | 解析 Markdown 並轉換為 Notion Block 格式。 |
 
 ## 3. 專案用戶流程圖 (User Flow)
 
@@ -141,6 +142,15 @@ graph TD
 > - 使用 `POST /v1/search` Endpoint 可取得 Integration 可存取的所有 Page/Database。
 > - Notion 權限為「白名單」制：使用者須手動在 Notion 頁面上「Add connections」選擇 Bot，API 才能存取該頁面。
 > - 系統啟動時將快取可用頁面清單，並提供給 Gemini 進行路由判斷。
+
+#### 5.5 主要 API Service 方法
+- **NotionService**:
+    - `sync_available_pages()`: 取得 Integration 可存取的所有頁面與屬性，作為路由判斷依據。
+    - `append_to_page(page_id, content)`: 將 Markdown 內容轉換為 Notion Blocks 並追加至指定頁面。
+    - `create_page(title, content)`: 建立全新的頁面並寫入內容。
+- **LLMService**:
+    - `generate_routing(transcript, available_pages)`: 根據語音轉錄與可用頁面，判斷最佳操作 (Stage 1)。
+    - `generate_summary(transcript, template_type, ...)`: 載入指定模板並生成結構化摘要 (Stage 2)。
 
 ## 6. 待討論與風險清單 (Discussion & Risks)
 

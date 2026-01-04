@@ -26,6 +26,20 @@ GEMINI_API_KEY=test NOTION_TOKEN=test LINE_CHANNEL_ACCESS_TOKEN=test LINE_USER_I
 - **STTService**: 轉錄介面調用驗證。
 - **NotionService**: 頁面搜尋、建立與內容追加。
 
+### Notion 整合驗證腳本
+專案提供了一個獨立腳本來驗證 Notion API 連線與權限設定，不需啟動整個 Backend。
+
+```bash
+# 確保 .env 已設定 NOTION_TOKEN
+cd backend
+poetry run python -m scripts.verify_notion_integration
+```
+
+**驗證項目**：
+1. **Auth**: 檢查 Token 是否有效。
+2. **Search**: 列出 Bot 可存取的所有頁面 (確認是否已 Add connections)。
+3. **Markdown**: 測試 Markdown 轉 Block 功能 (雖然不寫入 Notion，但會驗證轉換邏輯)。
+
 ---
 
 ## 2. 手動冒煙測試 (Manual Smoke Test)
