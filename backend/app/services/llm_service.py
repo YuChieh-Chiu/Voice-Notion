@@ -1,70 +1,82 @@
 """
 LLM Service - Gemini
-使用 Google Gemini API 進行摘要與智慧路由
+兩階段 LLM：路由判斷 + 依模板生成摘要
 """
 import json
+import os
 from typing import Dict, List
+from pathlib import Path
 from google import genai
 from google.genai import types
 from app.config import get_settings
 from app.core.logger import get_logger
+from app.prompts.routing import ROUTING_PROMPT
 
 settings = get_settings()
 logger = get_logger(__name__)
 
+# Schema：路由判斷
+ROUTING_SCHEMA = genai.types.Schema(
+    type=genai.types.Type.OBJECT,
+    required=["action", "title", "template_type", "target_page_id"],
+    properties={
+        "action": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="操作類型：create (建立新頁面) 或 append (追加到現有頁面)",
+        ),
+        "title": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="筆記標題",
+        ),
+        "template_type": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="摘要模板：meeting / idea / todo / general",
+        ),
+        "target_page_id": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="選定的 Notion 頁面 ID",
+        ),
+    },
+)
+
 
 class LLMService:
-    """Large Language Model Service"""
+    """Large Language Model Service - 兩階段架構"""
     
     def __init__(self):
         self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.templates_dir = Path(__file__).parent.parent / "prompts" / "templates"
         logger.info("Gemini client initialized")
     
-    def summarize_and_route(
+    def route(
         self, 
         transcript: str, 
         available_pages: List[Dict[str, str]]
     ) -> Dict:
         """
-        分析逐字稿，生成摘要並判斷應存入哪個 Notion 頁面
+        LLM Stage 1: 路由判斷
         
         Args:
             transcript: 語音逐字稿
-            available_pages: 可用的 Notion 頁面清單 [{"id": "xxx", "title": "Work"}, ...]
+            available_pages: 可用的 Notion 頁面清單
             
         Returns:
             {
+                "action": "create" | "append",
                 "title": "筆記標題",
-                "summary": "摘要內容",
-                "action_items": ["待辦1", "待辦2"],
-                "target_page_id": "xxx"  # 選定的頁面 ID
+                "template_type": "meeting" | "idea" | "todo" | "general",
+                "target_page_id": "xxx"
             }
         """
         try:
             # 建立頁面清單字串
             pages_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in available_pages])
             
-            prompt = f"""你是一個專業的筆記助理。請分析以下語音逐字稿，並完成以下任務：
-
-1. 生成一個簡潔的標題 (10字以內)
-2. 撰寫重點摘要 (50字左右)
-3. 提取待辦事項 (若有)
-4. 判斷此筆記應該存入哪個 Notion 頁面
-
-逐字稿：
-{transcript}
-
-可用的 Notion 頁面：
-{pages_str}
-
-請以 JSON 格式回覆，包含以下欄位：
-{{
-    "title": "筆記標題",
-    "summary": "摘要內容",
-    "action_items": ["待辦1", "待辦2"] (若無則為空陣列),
-    "target_page_id": "選定的頁面 ID" (若無法判斷則使用 "Inbox")
-}}"""
-
+            prompt = ROUTING_PROMPT.format(
+                transcript=transcript,
+                pages=pages_str
+            )
+            
             contents = [types.Content(
                 role="user",
                 parts=[types.Part.from_text(text=prompt)]
@@ -72,20 +84,68 @@ class LLMService:
             
             config = types.GenerateContentConfig(
                 response_mime_type="application/json",
-                temperature=0.3
+                response_schema=ROUTING_SCHEMA,
+                temperature=0.0
             )
             
             response = self.client.models.generate_content(
-                model="gemini-2.0-flash-exp",
+                model="gemini-flash-lite-latest",
                 contents=contents,
                 config=config
             )
             
             result = json.loads(response.text)
-            logger.info(f"LLM analysis completed: {result['title']}")
+            logger.info(f"Routing: action={result['action']}, template={result['template_type']}, page={result['target_page_id']}")
             
             return result
             
         except Exception as e:
-            logger.error(f"LLM service failed: {e}", exc_info=True)
+            logger.error(f"LLM routing failed: {e}", exc_info=True)
+            raise
+    
+    def summarize(self, transcript: str, template_type: str) -> str:
+        """
+        LLM Stage 2: 依模板生成摘要
+        
+        Args:
+            transcript: 語音逐字稿
+            template_type: 模板類型
+            
+        Returns:
+            摘要內容（依模板格式）
+        """
+        try:
+            # 載入模板
+            template_path = self.templates_dir / f"{template_type}.md"
+            if not template_path.exists():
+                logger.warning(f"Template {template_type} not found, using general")
+                template_path = self.templates_dir / "general.md"
+            
+            with open(template_path, "r", encoding="utf-8") as f:
+                template = f.read()
+            
+            prompt = template.format(transcript=transcript)
+            
+            contents = [types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=prompt)]
+            )]
+            
+            config = types.GenerateContentConfig(
+                temperature=1.0
+            )
+            
+            response = self.client.models.generate_content(
+                model="gemini-flash-lite-latest",
+                contents=contents,
+                config=config
+            )
+            
+            summary = response.text
+            logger.info(f"Summary generated using template: {template_type}")
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"LLM summarization failed: {e}", exc_info=True)
             raise

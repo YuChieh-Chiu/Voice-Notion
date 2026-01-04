@@ -36,6 +36,7 @@ class NotificationService:
             title: 筆記標題
             notion_url: Notion 頁面連結
         """
+        # TODO: 要再驗證一下推播訊息的格式，會不會打到 rate limit 之類的
         try:
             message = f"✅ 您的筆記已建立！\n\n📝 標題：{title}\n\n🔗 {notion_url}"
             

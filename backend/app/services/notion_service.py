@@ -3,12 +3,16 @@ Notion Service
 與 Notion API 互動：搜尋頁面、建立筆記
 """
 from typing import List, Dict
+from datetime import datetime
 from notion_client import Client
 from app.config import get_settings
 from app.core.logger import get_logger
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+# Notion API 限制
+NOTION_RICH_TEXT_LIMIT = 2000
 
 
 class NotionService:
@@ -59,6 +63,25 @@ class NotionService:
             logger.error(f"Failed to sync Notion pages: {e}", exc_info=True)
             return []
     
+    def _split_text(self, text: str, limit: int = NOTION_RICH_TEXT_LIMIT) -> List[Dict]:
+        """
+        分割長文字為多個 rich_text 物件（處理 Notion 字元限制）
+        
+        Args:
+            text: 原始文字
+            limit: 字元限制
+            
+        Returns:
+            [{"text": {"content": "..."}}, ...]
+        """
+        if len(text) <= limit:
+            return [{"text": {"content": text}}]
+        
+        chunks = []
+        for i in range(0, len(text), limit):
+            chunks.append({"text": {"content": text[i:i+limit]}})
+        return chunks
+    
     def create_page(self, parent_id: str, data: Dict) -> str:
         """
         在指定頁面下建立子頁面
@@ -81,16 +104,9 @@ class NotionService:
                 children=[
                     {
                         "object": "block",
-                        "type": "heading_2",
-                        "heading_2": {
-                            "rich_text": [{"text": {"content": "摘要"}}]
-                        }
-                    },
-                    {
-                        "object": "block",
                         "type": "paragraph",
                         "paragraph": {
-                            "rich_text": [{"text": {"content": data["summary"]}}]
+                            "rich_text": self._split_text(data["summary"])
                         }
                     }
                 ]
@@ -103,4 +119,50 @@ class NotionService:
             
         except Exception as e:
             logger.error(f"Failed to create Notion page: {e}", exc_info=True)
+            raise
+    
+    def append_to_page(self, page_id: str, data: Dict) -> str:
+        """
+        在現有頁面末尾追加內容
+        
+        Args:
+            page_id: 目標頁面 ID
+            data: 筆記資料 (包含 title 與 summary)
+            
+        Returns:
+            頁面 URL
+        """
+        try:
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            
+            self.client.blocks.children.append(
+                block_id=page_id,
+                children=[
+                    {"object": "block", "type": "divider", "divider": {}},
+                    {
+                        "object": "block",
+                        "type": "heading_3",
+                        "heading_3": {
+                            "rich_text": [{"text": {"content": f"📝 {data['title']} ({timestamp})"}}]
+                        }
+                    },
+                    {
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": self._split_text(data["summary"])
+                        }
+                    }
+                ]
+            )
+            
+            # 取得頁面 URL
+            page = self.client.pages.retrieve(page_id)
+            page_url = page["url"]
+            logger.info(f"Appended to Notion page: {page_url}")
+            
+            return page_url
+            
+        except Exception as e:
+            logger.error(f"Failed to append to Notion page: {e}", exc_info=True)
             raise

@@ -16,13 +16,15 @@ logger = get_logger(__name__)
 @celery_app.task(bind=True, max_retries=3)
 def process_voice_note(self, file_path: str):
     """
-    處理語音筆記 Pipeline
+    處理語音筆記 Pipeline（兩階段 LLM）
     
     1. STT: 語音轉文字
-    2. LLM: 摘要與路由
-    3. Notion: 建立頁面
-    4. Line: 推播通知
+    2. LLM Stage 1: 路由判斷 (action, title, template_type, target_page_id)
+    3. LLM Stage 2: 依模板生成摘要
+    4. Notion: create 或 append
+    5. Line: 推播通知
     """
+    # TODO: 初始化 service 是否可以拉出來，不要在每個任務中都初始化，以增加效率？
     try:
         logger.info(f"Processing voice note: {file_path}")
         
@@ -35,13 +37,17 @@ def process_voice_note(self, file_path: str):
         notion_service = NotionService()
         available_pages = notion_service.sync_available_pages()
         
-        # 3. LLM: 分析與路由
+        # 3. LLM Stage 1: 路由判斷
         llm_service = LLMService()
-        analysis = llm_service.summarize_and_route(transcript, available_pages)
-        logger.info(f"Analysis: {analysis}")
+        routing = llm_service.route(transcript, available_pages)
+        logger.info(f"Routing: {routing}")
         
-        # 4. Notion: 建立頁面
-        target_page_id = analysis.get("target_page_id")
+        # 4. LLM Stage 2: 依模板生成摘要
+        summary = llm_service.summarize(transcript, routing["template_type"])
+        logger.info(f"Summary length: {len(summary)} characters")
+        
+        # 5. Notion: 建立頁面或追加內容
+        target_page_id = routing.get("target_page_id")
         if not target_page_id or target_page_id == "Inbox":
             # 若無法判斷，使用第一個可用頁面
             target_page_id = available_pages[0]["id"] if available_pages else None
@@ -49,13 +55,23 @@ def process_voice_note(self, file_path: str):
         if not target_page_id:
             raise Exception("No available Notion page found")
         
-        notion_url = notion_service.create_page(target_page_id, analysis)
+        # 根據 action 決定操作
+        data = {
+            "title": routing["title"],
+            "summary": summary
+        }
         
-        # 5. Line: 推播通知
+        action = routing.get("action", "create")
+        if action == "append":
+            notion_url = notion_service.append_to_page(target_page_id, data)
+        else:
+            notion_url = notion_service.create_page(target_page_id, data)
+        
+        # 6. Line: 推播通知
         notification_service = NotificationService()
-        notification_service.push_message(analysis["title"], notion_url)
+        notification_service.push_message(routing["title"], notion_url)
         
-        # 6. 清理暫存檔案
+        # 7. 清理暫存檔案
         if os.path.exists(file_path):
             os.remove(file_path)
             logger.info(f"Cleaned up: {file_path}")
@@ -64,7 +80,7 @@ def process_voice_note(self, file_path: str):
         
         return {
             "status": "success",
-            "title": analysis["title"],
+            "title": routing["title"],
             "notion_url": notion_url
         }
         
