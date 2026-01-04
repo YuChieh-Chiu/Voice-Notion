@@ -12,7 +12,7 @@ settings = get_settings()
 app = FastAPI(
     title=settings.APP_NAME,
     description="語音筆記自動化系統",
-    version="0.1.0"
+    version="0.2.0"
 )
 
 # CORS

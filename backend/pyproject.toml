@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "voice-notion"
-version = "0.1.0"
+version = "0.2.0"
 description = "Voice Notion - Voice-to-Notion Automation"
 authors = ["YuChieh-Chiu <81817517+YuChieh-Chiu@users.noreply.github.com>"]
 readme = "README.md"
@@ -15,6 +15,8 @@ line-bot-sdk = "^3.21.0"
 notion-client = "^2.7.0"
 python-multipart = "^0.0.21"
 pydantic-settings = "^2.12.0"
+markdown-it-py = "^4.0.0"
+python-dotenv = "^1.2.1"
 
 
 [build-system]

@@ -4,7 +4,7 @@ LLM Service - Gemini
 """
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Any
 from pathlib import Path
 from google import genai
 from google.genai import types
@@ -18,23 +18,29 @@ logger = get_logger(__name__)
 # Schema：路由判斷
 ROUTING_SCHEMA = genai.types.Schema(
     type=genai.types.Type.OBJECT,
-    required=["action", "title", "template_type", "target_page_id"],
+    required=["action", "target_id", "new_topic_name", "title", "template_type"],
     properties={
         "action": genai.types.Schema(
             type=genai.types.Type.STRING,
-            description="操作類型：create (建立新頁面) 或 append (追加到現有頁面)",
+            description="操作類型：create (在 Root 下建立新子頁面) 或 append (在現有 Subpage 追加內容)",
+            enum=["create", "append"]
+        ),
+        "target_id": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="目標頁面 ID (Create 時為 Root ID, Append 時為 Subpage ID)",
+        ),
+        "new_topic_name": genai.types.Schema(
+            type=genai.types.Type.STRING,
+            description="新主題名稱 (僅 Create 時需要，Append 時為空字串)",
         ),
         "title": genai.types.Schema(
             type=genai.types.Type.STRING,
-            description="筆記標題",
+            description="筆記段落標題",
         ),
         "template_type": genai.types.Schema(
             type=genai.types.Type.STRING,
             description="摘要模板：meeting / idea / todo / general",
-        ),
-        "target_page_id": genai.types.Schema(
-            type=genai.types.Type.STRING,
-            description="選定的 Notion 頁面 ID",
+            enum=["meeting", "idea", "todo", "general"]
         ),
     },
 )
@@ -51,30 +57,33 @@ class LLMService:
     def route(
         self, 
         transcript: str, 
-        available_pages: List[Dict[str, str]]
+        page_tree: Dict[str, List[Dict[str, str]]]
     ) -> Dict:
         """
         LLM Stage 1: 路由判斷
         
         Args:
             transcript: 語音逐字稿
-            available_pages: 可用的 Notion 頁面清單
+            page_tree: { "roots": [], "subpages": [] }
             
         Returns:
             {
                 "action": "create" | "append",
-                "title": "筆記標題",
-                "template_type": "meeting" | "idea" | "todo" | "general",
-                "target_page_id": "xxx"
+                "target_id": "...",
+                "new_topic_name": "...",
+                "title": "...",
+                "template_type": "..."
             }
         """
         try:
-            # 建立頁面清單字串
-            pages_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in available_pages])
+            # Format Roots and Subpages for Prompt
+            roots_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("roots", [])])
+            subpages_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("subpages", [])])
             
             prompt = ROUTING_PROMPT.format(
                 transcript=transcript,
-                pages=pages_str
+                roots=roots_str or "(無)",
+                subpages=subpages_str or "(無)"
             )
             
             contents = [types.Content(
@@ -95,7 +104,7 @@ class LLMService:
             )
             
             result = json.loads(response.text)
-            logger.info(f"Routing: action={result['action']}, template={result['template_type']}, page={result['target_page_id']}")
+            logger.info(f"Routing result: {result}")
             
             return result
             
@@ -124,7 +133,17 @@ class LLMService:
             with open(template_path, "r", encoding="utf-8") as f:
                 template = f.read()
             
-            prompt = template.format(transcript=transcript)
+            # 載入共用的規範
+            markdown_spec_path = self.templates_dir / "_spec.md"
+            markdown_spec = ""
+            if markdown_spec_path.exists():
+                with open(markdown_spec_path, "r", encoding="utf-8") as f:
+                    markdown_spec = f.read()
+            
+            # 組合：原模板 + 規範
+            full_template = template + "\n" + markdown_spec
+            
+            prompt = full_template.format(transcript=transcript)
             
             contents = [types.Content(
                 role="user",
