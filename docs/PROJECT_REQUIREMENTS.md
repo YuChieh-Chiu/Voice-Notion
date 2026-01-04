@@ -16,7 +16,7 @@
 | **Backend API** | **FastAPI + Celery** | 核心架構。使用 **Poetry** 進行套件管理。 |
 | **Task Queue** | **Redis** | 確保任務非同步執行與重試。 |
 | **Speech-to-Text (STT)** | **Faster-Whisper (Small)** | 運行於 CPU 背景執行 (MVP)，無需 Kaggle/GPU。 |
-| **AI Summary** | **Gemini 2.0 Flash** | 使用 `google-genai` SDK。負責摘要與 **Notion 路由判斷**。 |
+| **AI Summary** | **Gemini Flash Lite (兩階段)** | Stage 1: 路由判斷 (Structured Output)。Stage 2: 依模板生成摘要。 |
 | **Notification** | **Line Messaging API** | 主動推播結果給使用者。 |
 | **Database** | **Notion API** | 儲存筆記內容。 |
 
@@ -47,9 +47,11 @@ sequenceDiagram
         Worker->>Redis: Pop Task
         Worker->>AI: STT (Faster-Whisper CPU)
         AI-->>Worker: Transcript
-        Worker->>AI: LLM (Gemini) - Summarize & Route
-        AI-->>Worker: Summary, Action Items, Target Page ID
-        Worker->>Notion: Create Page in Target Page
+        Worker->>AI: LLM Stage 1 (Gemini) - Routing
+        AI-->>Worker: action, title, template_type, target_page_id
+        Worker->>AI: LLM Stage 2 (Gemini) - Summarize with Template
+        AI-->>Worker: Structured Summary
+        Worker->>Notion: Create / Append to Target Page
         Worker->>Line: Push Notification (Summary + Link)
         Line->>User: 🔔 "您的筆記已建立！點擊查看..."
     end
@@ -85,7 +87,8 @@ graph TD
     API -- Enqueue --> Redis
     Redis -- Dequeue --> Worker
     Worker -- Transcribe --> Whisper
-    Worker -- Summarize/Route --> Gemini
+    Worker -- "Stage 1: Route" --> Gemini
+    Worker -- "Stage 2: Summarize" --> Gemini
     Worker -- Save --> NotionCloud
     Worker -- Notify --> LineCloud
 ```
@@ -103,13 +106,35 @@ graph TD
     - **STT**: 使用 `faster-whisper` (model=`small`) 於本機 CPU 執行，不依賴外部 Whisper API。
     - **LLM**: 使用 `google-genai` SDK 整合 Gemini。
 
-### 5.3 Smart Notion Integration
-- **Concept**: **Smart Routing (智慧路由)**
-    - 不再只存入單一資料庫。
-    - 系統將定義一組「常用頁面/資料庫」清單 (Configurable)。
-    - **Prompt 指令** (Gemini):
-        > "Analyze the transcript. Identify the user's intent. Choose the most appropriate Notion Parent Page ID from the provided list. If uncertain, use 'Inbox'."
-    - **Action**: Worker 根據 Gemini 回傳的 `target_page_id` 建立 Page。
+### 5.3 兩階段 LLM 架構
+
+#### Stage 1: 路由判斷 (Routing)
+- **目的**: 判斷操作類型、筆記類型與目標頁面
+- **輸出** (Structured Output):
+    - `action`: `create` (建立新頁面) 或 `append` (追加到現有頁面)
+    - `title`: 筆記標題
+    - `template_type`: `meeting` / `idea` / `todo` / `general`
+    - `target_page_id`: Notion 頁面 ID
+- **溫度設定**: `temperature=0.0`（確保路由判斷一致性）
+
+#### Stage 2: 模板化摘要生成 (Summarization)
+- **目的**: 依據 template_type 載入對應模板，生成結構化摘要
+- **模板系統** (`app/prompts/templates/`):
+    - `meeting.md`: 會議紀錄（參與者、決議、待辦）
+    - `idea.md`: 靈感記錄（主題、描述、要點）
+    - `todo.md`: 待辦事項（任務清單、優先級）
+    - `general.md`: 通用筆記（摘要、重點整理）
+- **摘要規範**: 所有模板包含「繁體中文為主、清晰易讀、避免冗言、校稿防錯」
+- **溫度設定**: `temperature=1.0`（鼓勵摘要多樣性）
+
+### 5.4 Smart Notion Integration
+
+#### Create vs Append
+- **Create**: 建立新子頁面（全新主題）
+- **Append**: 追加到現有頁面（相關主題）
+    - 以 Divider 區隔
+    - 標題含時間戳記：`📝 {title} (YYYY-MM-DD HH:MM)`
+    - 自動處理長文字分割（Notion 2000 字元限制）
 
 > [!NOTE]
 > **Notion API 權限與頁面取得方式**:

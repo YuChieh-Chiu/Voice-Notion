@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/voice-notion-logo.png" alt="Voice-Notion Logo" width="200">
+</div>
+
 # Voice-Notion 語音筆記助理
 
 一個整合語音助理、FastAPI、Celery 與 Notion 的語音筆記自動化系統。
@@ -6,15 +10,19 @@
 
 - **語音輸入**: 透過 Siri 或其他語音助理錄音上傳
 - **自動轉錄**: Faster-Whisper (CPU) 進行 STT
-- **智慧摘要**: Gemini AI 生成標題與重點
-- **智慧路由**: AI 判斷應存入哪個 Notion 頁面
+- **兩階段 AI**:
+  - Stage 1: 路由判斷（操作類型、筆記類型、目標頁面）
+  - Stage 2: 模板化摘要生成（meeting/idea/todo/general）
+- **智慧整合**: Create 新頁面或 Append 到現有頁面
 - **即時通知**: 完成後透過 Line 推播
 
 ## 技術架構
 
 - **Backend**: FastAPI + Celery + Redis
 - **STT**: Faster-Whisper (Small/CPU)
-- **LLM**: Google Gemini 2.0 Flash
+- **LLM**: Gemini Flash Lite（兩階段架構）
+  - 路由判斷: Structured Output (temp=0.0)
+  - 摘要生成: 模板驅動 (temp=1.0)
 - **Notification**: Line Messaging API
 - **Storage**: Notion API
 
@@ -28,6 +36,8 @@ poetry install
 ```
 
 ### 2. 設定環境變數
+
+詳細設定步驟請參考 [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
 
 ```bash
 cp .env.example .env
@@ -55,6 +65,9 @@ backend/
 │   ├── main.py           # FastAPI 入口
 │   ├── config.py         # 環境變數
 │   ├── core/             # 核心模組
+│   ├── prompts/          # LLM Prompts & Templates ✨
+│   │   ├── routing.py    # 路由判斷 prompt
+│   │   └── templates/    # meeting/idea/todo/general
 │   ├── routes/           # API 路由
 │   ├── schemas/          # Pydantic Schema
 │   ├── services/         # 業務邏輯
@@ -72,4 +85,4 @@ backend/
 
 ## License
 
-MIT
+- 待補
