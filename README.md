@@ -9,6 +9,10 @@
 ## 功能特點
 
 - **語音輸入**: 透過 Siri 或其他語音助理錄音上傳
+- **安全機制** 🔒:
+  - Magic Number 驗證（檔案簽章檢查）
+  - 檔案大小限制（25MB）
+  - API Key 驗證（iOS 端點）
 - **自動轉錄**: Faster-Whisper (CPU) 進行 STT
 - **兩階段 AI**:
   - Stage 1: 路由判斷（操作類型、筆記類型、目標頁面）
@@ -42,6 +46,10 @@ poetry install
 ```bash
 cp .env.example .env
 # 編輯 .env 填入 API Keys
+
+# 生成 Siri API Key
+openssl rand -hex 32
+# 將結果填入 .env 的 SIRI_API_KEY
 ```
 
 ### 3. 啟動服務
@@ -52,10 +60,20 @@ docker-compose up --build
 
 ### 4. 測試 API
 
+**標準端點**（無需 API Key）：
 ```bash
 curl -X POST http://localhost:8000/api/v1/note \
   -F "audio=@test.m4a"
 ```
+
+**iOS 端點**（需要 API Key）：
+```bash
+curl -X POST http://localhost:8000/api/v1/note/ios \
+  -H "X-API-Key: your-api-key" \
+  --data-binary @test.m4a
+```
+
+詳細的 Siri 整合設定請參考 [docs/SIRI_INTEGRATION.md](docs/SIRI_INTEGRATION.md)
 
 ## 專案結構
 
@@ -71,6 +89,7 @@ backend/
 │   ├── routes/           # API 路由
 │   ├── schemas/          # Pydantic Schema
 │   ├── services/         # 業務邏輯
+│   │   └── audio_validator.py  # 音訊驗證服務 🔒
 │   └── worker/           # Celery Tasks
 ├── Dockerfile.web        # Web 容器
 ├── Dockerfile.worker     # Worker 容器
