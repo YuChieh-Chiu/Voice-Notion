@@ -30,6 +30,36 @@
 - **Notification**: Line Messaging API
 - **Storage**: Notion API
 
+## 部署建議 (Production Deployment)
+
+### 1. 硬體需求與記憶體配置
+由於本專案包含 AI 語音轉錄模型 (Faster-Whisper)，**極度建議**伺服器至少具備 **4GB RAM**。
+若您使用 **1GB RAM** 的入門級主機 (如 Linode Nanode)，**必須**設定 Swap 虛擬記憶體以防止 OOM (Out Of Memory) 導致 Worker 崩潰。
+
+**設定 4GB Swap 指令 (Linux):**
+```bash
+# 1. 關閉目前的 swap
+sudo swapoff -a
+
+# 2. 建立 4GB swap 檔案
+sudo fallocate -l 4G /swapfile
+
+# 3. 設定權限 (僅 root 可讀寫)
+sudo chmod 600 /swapfile
+
+# 4. 格式化並啟用
+sudo mkswap /swapfile
+sudo swapon /swapfile
+
+# 5. 確認結果
+free -h
+```
+
+### 2. 環境變數
+詳細設定請參考 `docs/ENVIRONMENT_VARIABLES.md`，生產環境重點檢查：
+- `ALLOWED_HOSTS`: 務必設定正確的網域名稱，避免 Host Header 攻擊。
+- `GEMINI_API_KEY`: 確保 Key 有足夠的 Quota。
+
 ## 快速開始
 
 ### 1. 安裝依賴
