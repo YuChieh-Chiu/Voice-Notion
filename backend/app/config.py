@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "Voice-Notion"
     DEBUG: bool = False
     
+    # Security
+    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "voice-notion.jacktoholiday.uk"]
+    BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

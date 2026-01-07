@@ -10,6 +10,7 @@ from app.config import get_settings
 # Unified Request Validation Handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -20,6 +21,12 @@ app = FastAPI(
     title=settings.APP_NAME,
     description="語音筆記自動化系統",
     version="0.3.0"
+)
+
+# Trusted Host Middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=settings.ALLOWED_HOSTS
 )
 
 @app.exception_handler(RequestValidationError)
@@ -46,7 +53,7 @@ async def validation_exception_handler(request, exc):
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.BACKEND_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

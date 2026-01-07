@@ -3,8 +3,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.web
-    ports:
-      - "8000:8000"
     volumes:
       - ./backend:/app
       - ./data:/data
@@ -12,7 +10,16 @@ services:
       - .env
     depends_on:
       - redis
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
 
   worker:
     build:
