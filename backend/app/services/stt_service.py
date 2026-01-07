@@ -19,6 +19,7 @@ class STTService:
             
         # TODO: 後續如果有接上 Kaggle API，可以考慮換更強的 model
         # 使用 small model, CPU, int8 量化
+        # Faster Whisper 的 model 選擇可以參考 https://github.com/SYSTRAN/faster-whisper/blob/master/faster_whisper/utils.py
         self.model = WhisperModel("small", device="cpu", compute_type="int8")
         logger.info("Faster-Whisper model loaded (small/CPU)")
     
