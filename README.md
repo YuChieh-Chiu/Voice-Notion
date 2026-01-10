@@ -13,6 +13,8 @@
   - Magic Number 驗證（檔案簽章檢查）
   - 檔案大小限制（25MB）
   - API Key 驗證（iOS 端點）
+  - **傳輸加密**: Celery 任務酬載 AES 加密保護
+  - **快取安全**: Notion Token 雜湊化與 TTL 管理
 - **自動轉錄**: Faster-Whisper (CPU) 進行 STT
 - **兩階段 AI**:
   - Stage 1: 路由判斷（操作類型、筆記類型、目標頁面）

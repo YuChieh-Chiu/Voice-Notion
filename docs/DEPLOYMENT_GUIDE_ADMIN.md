@@ -20,6 +20,7 @@
 | `APP_NAME` | 選用 | 應用程式名稱 | `Voice-Notion` |
 | `DEBUG` | 選用 | 除錯模式 | `false` |
 | `ALLOWED_HOSTS` | 必要 | 允許的網域名稱 | `["localhost"]` |
+| `TASK_ENCRYPTION_KEY` | 必要 | 用於加密 Celery 任務酬載 (AES-256) | - |
 
 ---
 
@@ -205,7 +206,20 @@ https://www.notion.so/myworkspace/a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
 ### DEBUG
 **預設值**: `false`
 
-**說明**: 設為 `true` 啟用詳細除錯日誌。生產環境請保持 `false`。
+---
+
+### 5. TASK_ENCRYPTION_KEY
+
+**用途**：用於針對傳輸中的 Celery 任務酬載進行 AES 對稱加密。這能保護 BYOK 使用者的 API Key 在 Redis 佇列中不被明文存取。
+
+#### 生成方式
+在終端機執行以下指令：
+```bash
+python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+```
+
+> [!NOTE]
+> 若 `DEBUG=true` 且未提供此變數，系統會自動生成臨時金鑰，但重啟後會失效。生產環境**必須**固定此值。
 
 ---
 
@@ -232,6 +246,8 @@ docker-compose logs worker
 
 - ✅ 確保 `.env` 已加入 `.gitignore`，避免提交至版本控制
 - ✅ 定期輪換 API Key 與 Token
+- ✅ **機密保護**：任務酬載在 Redis 中已實作 Fernet 加密。
+- ✅ **快取安全**：Notion Token 在記憶體中以 SHA-256 雜湊儲存，且具備時效性 (TTLCache)。
 - ✅ 生產環境請使用環境變數或密鑰管理服務（如 AWS Secrets Manager、Google Secret Manager）
 - ❌ 切勿在程式碼或文件中硬編碼真實的 API Key
 

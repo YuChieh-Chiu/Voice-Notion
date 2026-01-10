@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Security
     ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "voice-notion.jacktoholiday.uk"]
     BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    TASK_ENCRYPTION_KEY: str = ""  #用於加密 Celery 任務酬載的 Fernet 金鑰
     
     class Config:
         env_file = ".env"

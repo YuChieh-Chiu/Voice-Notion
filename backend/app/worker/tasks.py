@@ -11,16 +11,17 @@ from app.services.notion_service import NotionService
 from app.services.notification_service import NotificationService
 from app.core.logger import get_logger
 from app.schemas.context import UserContext
+from app.core.security import TaskSecurity
 
 logger = get_logger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=3)
-def process_voice_note(self, file_path: str, user_context_dict: Optional[Dict] = None):
+def process_voice_note(self, file_path: str, encrypted_context: Optional[str] = None):
     """
     處理語音筆記 Pipeline（兩階段 LLM）
     
-    0. 解析 Context
+    0. 解析 Context (解密)
     1. STT: 語音轉文字
     2. LLM Stage 1: 路由判斷 (Tree Routing)
     3. LLM Stage 2: 依模板生成摘要
@@ -29,14 +30,16 @@ def process_voice_note(self, file_path: str, user_context_dict: Optional[Dict] =
 
     Args:
         file_path: 音訊檔案路徑
-        user_context_dict: 轉化自 UserContext 的字典 (BYOK 憑證)
+        encrypted_context: 加密後的使用者上下文字串
     """
     try:
         logger.info(f"Processing voice note: {file_path}")
         
-        # 0. 解析 Context
-        context = UserContext(**user_context_dict) if user_context_dict else None
-        if context:
+        # 0. 解析 Context (解密)
+        context = None
+        if encrypted_context:
+            context_dict = TaskSecurity.decrypt_payload(encrypted_context)
+            context = UserContext(**context_dict)
             logger.info(f"Task context initialized (Mode: {context.type})")
         
         # 1. STT

@@ -2,9 +2,12 @@
 Notion Service
 與 Notion API 互動：搜尋頁面、建立筆記
 """
+import hashlib
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timedelta
 from notion_client import Client
+from cachetools import TTLCache
+
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.utils.markdown_parser import NotionMarkdownParser
@@ -13,9 +16,9 @@ from app.schemas.context import UserContext, AuthType
 settings = get_settings()
 logger = get_logger(__name__)
 
-# Cache per token to ensure multi-tenancy safety
-# Structure: {token: {"data": result, "expires_at": timestamp}}
-_token_caches = {}
+# 使用 TTLCache 防止記憶體洩漏 (1000 個 Token, TTL 30 分鐘)
+# Key 為雜湊後的 Token，Value 為 {"data": result, "expires_at": ...}
+_token_caches = TTLCache(maxsize=1000, ttl=1800)
 
 class NotionService:
     """Notion API Service"""
@@ -31,6 +34,10 @@ class NotionService:
 
         self.client = Client(auth=self.auth_token)
         self.md_parser = NotionMarkdownParser()
+        
+        # 雜湊 Token 用於快取金鑰索引
+        self._token_hash = hashlib.sha256(self.auth_token.encode()).hexdigest()
+        
         logger.info(f"Notion client initialized (Mode: {'Demo' if self.is_demo else 'Admin'})")
     
     def sync_page_tree(self) -> Dict[str, List[Dict[str, str]]]:
@@ -38,15 +45,12 @@ class NotionService:
         同步取得 Page Tree (Roots & Subpages)
         快取 30 分鐘 (Per Token)
         """
-        global _token_caches
-        now = datetime.now()
+        # TTLCache 會自動處理過期，不再需要手動檢查 expires_at
+        cache_data = _token_caches.get(self._token_hash)
         
-        cache = _token_caches.get(self.auth_token)
-        
-        # Check Cache
-        if cache and now < cache.get("expires_at", now):
+        if cache_data:
             logger.info("Hit Page Tree Cache")
-            return cache["data"]
+            return cache_data
             
         try:
             # Step 1: Search Roots (All accessible pages)
@@ -111,11 +115,8 @@ class NotionService:
                 "subpages": subpages
             }
             
-            # Update Cache (30 mins)
-            _token_caches[self.auth_token] = {
-                "data": result,
-                "expires_at": now + timedelta(minutes=30)
-            }
+            # Update Cache (TTLCache will handle expiration)
+            _token_caches[self._token_hash] = result
             
             logger.info(f"Synced {len(roots)} roots and {len(subpages)} subpages for token {self.auth_token[:8]}...")
             return result
@@ -158,10 +159,8 @@ class NotionService:
             )
             
             # Proactively Update Cache (instead of invalidation)
-            # This ensures the new page is immediately available for Append actions
-            global _token_caches
-            if self.auth_token in _token_caches:
-                _token_caches[self.auth_token]["data"]["subpages"].append({
+            if self._token_hash in _token_caches:
+                _token_caches[self._token_hash]["subpages"].append({
                     "id": new_page["id"],
                     "parent_id": parent_id,
                     "title": title

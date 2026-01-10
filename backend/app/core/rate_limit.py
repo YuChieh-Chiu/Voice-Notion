@@ -24,7 +24,13 @@ class RateLimiter:
         if api_key == settings.SIRI_API_KEY and api_key != "":
             return # Admin skip
 
-        client_ip = request.client.host
+        # 支援反向代理 (Nginx/Cloudflare) 取得真實 IP
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            client_ip = forwarded_for.split(",")[0].strip()
+        else:
+            client_ip = request.client.host
+            
         key = f"rate_limit:{client_ip}"
         now = time.time()
         

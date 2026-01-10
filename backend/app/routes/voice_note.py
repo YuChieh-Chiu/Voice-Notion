@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.services.audio_validator import validate_audio_format, validate_file_size, MAX_FILE_SIZE
 from app.core.dependencies import get_user_context
 from app.schemas.context import UserContext
+from app.core.security import TaskSecurity
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -69,8 +70,9 @@ async def upload_voice_note(
         
         logger.info(f"Audio file saved (standard): {file_path}, Auth: {context.type}")
         
-        # 🚀 發送 Celery 任務 (傳遞 Context Dict)
-        task = process_voice_note.delay(file_path, context.model_dump())
+        # 🚀 發送 Celery 任務 (傳遞加密後的 Context)
+        encrypted_context = TaskSecurity.encrypt_payload(context.model_dump())
+        task = process_voice_note.delay(file_path, encrypted_context)
         logger.info(f"Task enqueued: {task.id}")
         
         return VoiceNoteResponse(
@@ -130,8 +132,9 @@ async def upload_voice_note_ios(
         
         logger.info(f"Audio file saved (iOS): {file_path}, Auth: {context.type}")
         
-        # 🚀 發送 Celery 任務 (傳遞 Context Dict)
-        task = process_voice_note.delay(file_path, context.model_dump())
+        # 🚀 發送 Celery 任務 (傳遞加密後的 Context)
+        encrypted_context = TaskSecurity.encrypt_payload(context.model_dump())
+        task = process_voice_note.delay(file_path, encrypted_context)
         logger.info(f"Task enqueued: {task.id}")
         
         return VoiceNoteResponse(
