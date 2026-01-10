@@ -2,7 +2,8 @@
 Dependency Injection
 依賴注入配置
 """
-from typing import Optional
+import json
+from typing import Optional, Dict
 from fastapi import Header, Request, HTTPException, Depends
 from app.services.stt_service import STTService
 from app.services.llm_service import LLMService
@@ -11,7 +12,9 @@ from app.services.notification_service import NotificationService
 from app.schemas.context import UserContext, AuthType
 from app.config import get_settings
 from app.core.rate_limit import RateLimiter
+from app.core.logger import get_logger
 
+logger = get_logger(__name__)
 settings = get_settings()
 
 # 單一 RateLimiter 實例 (每小時 3 次)
@@ -21,18 +24,14 @@ demo_rate_limiter = RateLimiter(times=3, hours=1)
 async def get_user_context(
     request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    x_gemini_api_key: Optional[str] = Header(None, alias="X-Gemini-Api-Key"),
-    x_notion_token: Optional[str] = Header(None, alias="X-Notion-Token"),
-    x_line_token: Optional[str] = Header(None, alias="X-Line-Token"),
-    x_line_user_id: Optional[str] = Header(None, alias="X-Line-User-ID"),
+    x_voice_notion_config: Optional[str] = Header(None, alias="X-Voice-Notion-Config"),
 ) -> UserContext:
     """
     實作智慧身份驗證與上下文注入
     
     1. 若帶有 X-API-Key 且匹配 -> Admin 模式
-    2. 若不匹配 -> 檢查是否為 Demo 意圖 (帶有 BYOK Headers)
-       - 是 -> 執行 Rate Limit，回傳 Demo Context
-       - 否 -> 拋出 401
+    2. 若帶有 X-Voice-Notion-Config -> 解析 JSON 並進入 Demo 模式 (BYOK)
+    3. 否則拋出 401
     """
     
     # Path A: Admin Intent
@@ -43,27 +42,41 @@ async def get_user_context(
                 ip_address=request.client.host
             )
         else:
-            # Explicit Admin Key provided but wrong
             raise HTTPException(status_code=401, detail="Invalid Admin API Key")
 
-    # Path B: Demo Intent (BYOK)
-    if x_gemini_api_key and x_notion_token:
-        # 執行限流檢查
-        await demo_rate_limiter(request)
-        
-        return UserContext(
-            type=AuthType.DEMO,
-            gemini_key=x_gemini_api_key,
-            notion_token=x_notion_token,
-            line_token=x_line_token,
-            line_user_id=x_line_user_id,
-            ip_address=request.client.host
-        )
-        
+    # Path B: Demo Intent (BYOK via Single Config Header)
+    if x_voice_notion_config:
+        try:
+            config = json.loads(x_voice_notion_config)
+            
+            # 嚴格從 JSON 中提取必要欄位
+            gemini_key = config.get("X-Gemini-Api-Key")
+            notion_token = config.get("X-Notion-Token")
+            line_token = config.get("X-Line-Token")
+            line_user_id = config.get("X-Line-User-ID")
+            
+            if gemini_key and notion_token:
+                await demo_rate_limiter(request)
+                return UserContext(
+                    type=AuthType.DEMO,
+                    gemini_key=gemini_key,
+                    notion_token=notion_token,
+                    line_token=line_token,
+                    line_user_id=line_user_id,
+                    ip_address=request.client.host
+                )
+            else:
+                logger.warning(f"Missing required fields in config from {request.client.host}")
+                raise HTTPException(status_code=400, detail="Config JSON missing required Gemini or Notion keys")
+                
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid JSON in X-Voice-Notion-Config from {request.client.host}")
+            raise HTTPException(status_code=400, detail="Invalid configuration format (JSON required)")
+
     # No valid authentication provided
     raise HTTPException(
         status_code=401, 
-        detail="Authentication required. Provide a valid Admin Key or BYOK Headers."
+        detail="Authentication required. Provide X-Voice-Notion-Config or Admin Key."
     )
 
 

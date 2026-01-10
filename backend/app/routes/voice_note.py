@@ -107,7 +107,7 @@ async def upload_voice_note_ios(
     2. Headers 加入 X-API-Key
     3. Method 設為 POST
     
-    詳細設定請參考: docs/SIRI_INTEGRATION.md
+    詳細設定請參考: docs/SIRI_INTEGRATION_DEMO.md 或 docs/SIRI_INTEGRATION_ADMIN.md
     """
     try:
         # 📦 讀取檔案內容

@@ -487,7 +487,8 @@
                                 class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">1</span>
                             <h4 class="font-semibold text-white">建立捷徑與錄音</h4>
                         </div>
-                        <p class="text-sm text-slate-400 leading-relaxed ml-11">開啟「捷徑」App，建立新捷徑並加入「<b>錄音</b>」動作。</p>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">開啟「捷徑」App，建立新捷徑並加入「<b>錄音 (Record
+                                Audio)</b>」動作。</p>
                         <div
                             class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
                             <img src="/static/img/guide/step1.jpeg" alt="步驟 1: 錄音" class="w-full h-full object-contain">
@@ -499,13 +500,21 @@
                         <div class="flex items-center gap-3">
                             <span
                                 class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">2</span>
-                            <h4 class="font-semibold text-white">貼入 JSON 設定</h4>
+                            <h4 class="font-semibold text-white">設定 API 請求與 Header</h4>
                         </div>
-                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>文字</b>」動作，直接貼入從本頁面複製的 <b>JSON
-                                內容</b>。</p>
+                        <div class="text-sm text-slate-400 leading-relaxed ml-11 space-y-2">
+                            <p>加入「<b>取得 URL 內容 (Get Contents of URL)</b>」，方法設為 <b>POST</b>。</p>
+                            <p>在 <b>標題 (Headers)</b> 手動加入：</p>
+                            <ul
+                                class="list-disc list-inside bg-slate-800/50 p-3 rounded-xl border border-white/5 text-xs text-brand-300">
+                                <li>鍵 (Key): <span class="text-white font-mono">X-Voice-Notion-Config</span></li>
+                                <li>值 (Value): <span class="text-white">點擊並貼入 JSON 代碼</span></li>
+                            </ul>
+                            <p>並在「要求內文」選擇<b>檔案</b>與<b>錄製的音訊</b>。</p>
+                        </div>
                         <div
                             class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
-                            <img src="/static/img/guide/step2.jpeg" alt="步驟 2: 貼入 JSON"
+                            <img src="/static/img/guide/step2.jpeg" alt="步驟 2: API 設定"
                                 class="w-full h-full object-contain">
                         </div>
                     </div>
@@ -515,44 +524,13 @@
                         <div class="flex items-center gap-3">
                             <span
                                 class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">3</span>
-                            <h4 class="font-semibold text-white">解析設定內容</h4>
-                        </div>
-                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>從輸入項目取得辭典</b>」，捷徑會將上方的文字解析為變數。</p>
-                        <div
-                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
-                            <img src="/static/img/guide/step3.jpeg" alt="步驟 3: 解析" class="w-full h-full object-contain">
-                        </div>
-                    </div>
-
-                    <!-- Guide Step 4 -->
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-3">
-                            <span
-                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">4</span>
-                            <h4 class="font-semibold text-white">設定 API 請求</h4>
-                        </div>
-                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>取得 URL 的內容</b>」，方法設為 <b>POST</b>。在
-                            <b>標題 (Headers)</b> 選擇剛解析的「辭典」，並在「要求回覆本文」選擇<b>檔案</b>與<b>錄製的音訊</b>。
-                        </p>
-                        <div
-                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
-                            <img src="/static/img/guide/step4.jpeg" alt="步驟 4: API"
-                                class="w-full h-full object-contain">
-                        </div>
-                    </div>
-
-                    <!-- Guide Step 5 -->
-                    <div class="space-y-4">
-                        <div class="flex items-center gap-3">
-                            <span
-                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">5</span>
-                            <h4 class="font-semibold text-white">設定通知與命名捷徑</h4>
+                            <h4 class="font-semibold text-white">設定通知與命名</h4>
                         </div>
                         <p class="text-sm text-slate-400 leading-relaxed ml-11">最後加入「<b>顯示通知</b>」並連結 URL
                             內容。並將捷徑重新命名為「記筆記」。</p>
                         <div
                             class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
-                            <img src="/static/img/guide/step5.jpeg" alt="步驟 5: 通知" class="w-full h-full object-contain">
+                            <img src="/static/img/guide/step3.jpeg" alt="步驟 3: 通知" class="w-full h-full object-contain">
                         </div>
                     </div>
                 </div>
