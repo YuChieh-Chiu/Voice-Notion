@@ -1,23 +1,39 @@
-# 環境變數設定指南
+# 🛠️ 管理員部署與環境變數指南 (Admin Only)
 
-本文件說明 Voice-Notion 專案所需的所有環境變數設定步驟與官方文件連結。
+> [!IMPORTANT]
+> **本文件僅適用於「自行部署伺服器」的管理員。**
+> 若您只是想快速試用 Demo 網站的功能，請參考 [試用者指南 (Demo Guide)](./DEMO_GUIDE.md)。
+
+本文件說明自架 Voice-Notion 專案所需的所有環境變數設定步驟與官方文件連結。
 
 ## 📋 環境變數清單總覽
 
 | 變數名稱 | 類型 | 用途 | 預設值 |
 |---------|------|------|--------|
-| `GEMINI_API_KEY` | 必要 | Google Gemini API 金鑰（用於 LLM 摘要與路由） | - |
-| `NOTION_TOKEN` | 必要 | Notion Integration Token（用於建立頁面） | - |
+| `GEMINI_API_KEY` | 必要 | Google Gemini API 金鑰（由伺服器端統一提供） | - |
+| `NOTION_TOKEN` | 必要 | Notion Integration Token（伺服器寫入權限） | - |
+| `SIRI_API_KEY` | 必要 | iOS 捷徑驗證金鑰（管理者個人使用） | - |
 | `LINE_CHANNEL_ACCESS_TOKEN` | 必要 | Line Messaging API Token（用於推播通知） | - |
 | `LINE_USER_ID` | 必要 | Line 推播目標使用者 ID | - |
 | `REDIS_URL` | 選用 | Redis 連線 URL（Celery Broker） | `redis://redis:6379/0` |
 | `NOTION_DATABASE_ID` | 選用 | 預設 Notion 資料庫 ID | `""` (空字串) |
 | `APP_NAME` | 選用 | 應用程式名稱 | `Voice-Notion` |
 | `DEBUG` | 選用 | 除錯模式 | `false` |
+| `ALLOWED_HOSTS` | 必要 | 允許的網域名稱 | `["localhost"]` |
 
 ---
 
-## 🚀 快速開始
+## 🔐 身份驗證機制說明 (Auth Logic)
+
+本系統支援兩種訪問模式，根據 Request Headers 自動切換：
+
+1. **管理員模式 (Admin Mode)**:
+   - 觸發條件：帶有 `X-API-Key` 且與伺服器 `.env` 中的 `SIRI_API_KEY` 完全一致。
+   - 特點：使用伺服器端配置的 `GEMINI_API_KEY`、`NOTION_TOKEN` 等。無次數限制。
+
+2. **試用展示模式 (Demo/BYOK Mode)**:
+   - 觸發條件：**未提供** `X-API-Key`，但帶有 `X-Gemini-Api-Key` 與 `X-Notion-Token`。
+   - 特點：使用使用者自備的 Keys。受 Rate Limit 限制（**3 次/小時**）。
 
 ### 步驟 1：複製範本檔案
 ```bash
@@ -25,7 +41,7 @@ cp .env.example .env
 ```
 
 ### 步驟 2：依照下方說明填入各項環境變數
-在 `.env` 檔案中填入真實值，請勿將 `.env` 提交至版本控制。
+在 `.env` 檔案中填入真實值，**請勿將 `.env` 提交至版本控制**。
 
 ---
 
@@ -49,7 +65,7 @@ cp .env.example .env
 
 #### 配置範例
 ```bash
-GEMINI_API_KEY=AIzaSyA1234567890abcdefghijklmnopqrstuv
+GEMINI_API_KEY=AIza...
 ```
 
 ---
@@ -77,7 +93,7 @@ GEMINI_API_KEY=AIzaSyA1234567890abcdefghijklmnopqrstuv
 
 #### 配置範例
 ```bash
-NOTION_TOKEN=ntn_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
+NOTION_TOKEN=ntn_...
 ```
 
 #### 常見問題
@@ -120,7 +136,7 @@ NOTION_TOKEN=ntn_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6
 
 #### 配置範例
 ```bash
-LINE_CHANNEL_ACCESS_TOKEN=abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWX
+LINE_CHANNEL_ACCESS_TOKEN=abcd...
 ```
 
 ---
@@ -147,12 +163,8 @@ LINE_CHANNEL_ACCESS_TOKEN=abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQR
 
 #### 配置範例
 ```bash
-LINE_USER_ID=Uabcdef1234567890abcdef1234567890
+LINE_USER_ID=Uabc...
 ```
-
-#### 常見問題
-- **Q: 如何快速取得自己的 User ID？**
-  - A: 可暫時在後端 `/webhook` 端點加入 log，傳送訊息給 Bot 後從 log 中取得
 
 ---
 
@@ -170,7 +182,7 @@ LINE_USER_ID=Uabcdef1234567890abcdef1234567890
 ### NOTION_DATABASE_ID
 **預設值**: `""` (空字串)
 
-**說明**: 若有預設的 Notion 資料庫，可填入其 ID。留空時，系統會使用 Smart Routing 自動判斷目標頁面。
+**說明**: 若有預設的 Notion 資料庫，可填入其 ID。留空時，系統會使用 Smart Routing 自動判斷經過「Notion Integration」授權的目標頁面們。
 
 **取得方式**: 開啟 Notion 資料庫頁面，URL 中 `notion.so/` 後的 32 位英數字串即為 Database ID。
 

@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice-Notion | AI 語音筆記助理</title>
+    <link rel="icon" type="image/png" href="img/logo.png">
+    <!-- Fonts: Outfit for numbers/English & Noto Sans TC for Chinese content -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95',
+                        },
+                        slate: {
+                            950: '#020617',
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <style type="text/tailwindcss">
+        /* Glassmorphism Classes */
+        .glass {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .glass-card {
+            background: rgba(30, 41, 59, 0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Premium Gradient Backgrounds */
+        .bg-gradient-premium {
+            background: radial-gradient(circle at top left, rgba(139, 92, 246, 0.15), transparent 40%),
+                radial-gradient(circle at bottom right, rgba(236, 72, 153, 0.1), transparent 40%),
+                #020617;
+        }
+
+        /* Gradient Text */
+        .text-gradient {
+            background: linear-gradient(135deg, #a78bfa 0%, #ec4899 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Custom Input Styling */
+        .input-premium {
+            @apply w-full bg-slate-900/50 border border-slate-700/50 rounded-2xl px-5 pl-14 md:pl-16 py-4 text-white placeholder-slate-500 transition-all duration-300;
+            @apply focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500/50 focus:bg-slate-950/80;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #020617;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #1e293b;
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #334155;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body x-data="setupFlow()"
+    class="bg-gradient-premium text-slate-300 min-h-screen selection:bg-brand-500/30 selection:text-white antialiased">
+
+    <!-- Background Accents -->
+    <div class="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div
+            class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-brand-600/10 rounded-full blur-[120px] animate-pulse-slow">
+        </div>
+        <div
+            class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-pink-600/10 rounded-full blur-[120px] animate-pulse-slow">
+        </div>
+    </div>
+
+    <div class="container mx-auto px-6 py-12 md:py-20 max-w-5xl">
+
+        <!-- Header Section -->
+        <header class="text-center mb-16 space-y-6 animate-float">
+            <div class="flex justify-center flex-col items-center gap-4">
+                <div
+                    class="w-36 h-36 md:w-40 md:h-40 bg-white rounded-[20%] shadow-2xl shadow-slate-900/40 p-1 flex items-center justify-center overflow-hidden">
+                    <img src="img/logo.png" alt="Voice-Notion Logo" class="w-full h-full object-contain">
+                </div>
+                <div class="space-y-2">
+                    <h1 class="text-5xl md:text-7xl font-bold tracking-tight text-white">
+                        Voice<span class="text-gradient">-Notion</span>
+                    </h1>
+                    <p class="text-lg md:text-xl text-slate-400 font-light tracking-wide max-w-xl mx-auto">
+                        快速設定，輕鬆記錄您的靈感。
+                    </p>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Configuration Panel -->
+        <main class="grid lg:grid-cols-12 gap-10 items-start">
+
+            <!-- Settings Form (Left) -->
+            <section class="lg:col-span-7 space-y-8">
+                <div
+                    class="glass-card rounded-[2.5rem] p-8 md:p-12 space-y-10 group transition-all duration-500 hover:shadow-brand-500/5 hover:-translate-y-1">
+
+                    <div class="space-y-2">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-10 h-10 rounded-2xl bg-brand-500/20 text-brand-400 flex items-center justify-center ring-1 ring-brand-500/30">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
+                                    </path>
+                                </svg>
+                            </span>
+                            <h2 class="text-2xl font-semibold text-white">憑證設定</h2>
+                        </div>
+                        <p class="text-sm text-slate-500 ml-11">所有資料將作為 API Header 傳輸，本服務的伺服器不保存任何隱私資料。</p>
+                    </div>
+
+                    <div class="space-y-8">
+                        <!-- Gemini API Key -->
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between ml-1">
+                                <label class="text-sm font-medium text-slate-300 flex items-center gap-2">
+                                    Gemini API Key
+                                    <span
+                                        class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 uppercase font-bold tracking-tight">Required</span>
+                                </label>
+                                <a href="https://aistudio.google.com/app/apikey" target="_blank"
+                                    class="text-xs text-brand-400 hover:text-brand-300 transition-colors">點此取得 Key</a>
+                            </div>
+                            <div class="relative group/input">
+                                <span
+                                    class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600 transition-colors group-focus-within/input:text-brand-500">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
+                                        </path>
+                                    </svg>
+                                </span>
+                                <input type="password" x-model="config.gemini" class="input-premium pl-14"
+                                    placeholder="AIzaSy...">
+                            </div>
+                        </div>
+
+                        <!-- Notion Token -->
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between ml-1">
+                                <label class="text-sm font-medium text-slate-300 flex items-center gap-2">
+                                    Notion Internal Integration Token
+                                    <span
+                                        class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-500 uppercase font-bold tracking-tight">Required</span>
+                                </label>
+                                <a href="https://www.notion.so/my-integrations" target="_blank"
+                                    class="text-xs text-brand-400 hover:text-brand-300 transition-colors">設定連結</a>
+                            </div>
+                            <div class="relative group/input">
+                                <span
+                                    class="absolute left-5 top-1/2 -translate-y-1/2 text-slate-600 transition-colors group-focus-within/input:text-brand-500">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4">
+                                        </path>
+                                    </svg>
+                                </span>
+                                <input type="password" x-model="config.notion" class="input-premium pl-14"
+                                    placeholder="ntn_...">
+                            </div>
+                        </div>
+
+                        <!-- Line Config (Advanced) -->
+                        <div class="pt-6 border-t border-slate-800/80">
+                            <button @click="showAdvanced = !showAdvanced"
+                                class="flex items-center justify-between w-full text-slate-400 hover:text-slate-200 transition-colors p-2 rounded-xl hover:bg-white/5 group/adv">
+                                <span class="text-sm font-medium flex items-center gap-2">
+                                    <svg class="w-4 h-4 transition-transform duration-300"
+                                        :class="{'rotate-90': showAdvanced}" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                    Line 通知串接 (選填)
+                                </span>
+                                <span
+                                    class="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 group-hover/adv:bg-brand-500/20 group-hover/adv:text-brand-400 transition-colors">Optional</span>
+                            </button>
+
+                            <div x-show="showAdvanced" x-collapse x-transition class="mt-8 space-y-6 px-1">
+                                <div class="space-y-3">
+                                    <label class="text-xs font-medium text-slate-500 ml-1">Channel Access Token</label>
+                                    <input type="password" x-model="config.lineToken" class="input-premium py-3 text-sm"
+                                        placeholder="需為 Messaging API 授權碼">
+                                </div>
+                                <div class="space-y-3">
+                                    <label class="text-xs font-medium text-slate-500 ml-1">Line User ID</label>
+                                    <input type="text" x-model="config.lineUserId" class="input-premium py-3 text-sm"
+                                        placeholder="U...">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Generate Button -->
+                    <div class="pt-10">
+                        <button @click="generateCode"
+                            class="relative w-full overflow-hidden group/btn px-10 py-5 bg-gradient-to-r from-brand-600 to-brand-500 text-white rounded-[1.5rem] font-bold text-lg shadow-2xl shadow-brand-500/30 hover:shadow-brand-500/50 transition-all duration-500 active:scale-[0.98]"
+                            :class="{'opacity-50 cursor-not-allowed': !isValid()}" :disabled="!isValid() || loading">
+                            <span class="relative z-10 flex items-center justify-center gap-3">
+                                <span x-show="!loading">📦 封裝捷徑設定</span>
+                                <svg x-show="loading" class="animate-spin h-5 w-5 text-white"
+                                    xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                        stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                    </path>
+                                </svg>
+                                <span x-show="loading">處理中...</span>
+                            </span>
+                            <div
+                                class="absolute inset-0 bg-white/20 translate-y-full group-hover/btn:translate-y-0 transition-transform duration-500">
+                            </div>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Deployment Guide (Right) -->
+            <section class="lg:col-span-5 space-y-8">
+                <div class="glass-panel rounded-[2.5rem] p-8 md:p-10 min-h-[500px] flex flex-col">
+
+                    <div class="flex items-center gap-3 mb-8">
+                        <span
+                            class="w-10 h-10 rounded-2xl bg-brand-500/20 text-brand-400 flex items-center justify-center ring-1 ring-brand-500/30">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 21v-4m0 0V5a2 2 0 012 -2h6.5l1 1H21l-3 6 3 6h-8.5l-1 -1H5a2 2 0 00-2 2zm9 -13.5V9">
+                                </path>
+                            </svg>
+                        </span>
+                        <h2 class="text-2xl font-semibold text-white">啟動步驟</h2>
+                    </div>
+
+                    <!-- Step-by-Step UI -->
+                    <div class="space-y-12 flex-grow">
+                        <!-- Step A -->
+                        <div class="relative pl-10">
+                            <div class="absolute left-0 top-0.5 w-6 h-6 rounded-full border transition-all duration-500 flex items-center justify-center z-10"
+                                :class="isValid() ? (done.a ? 'border-brand-500/50 bg-brand-500 text-white' : 'border-brand-500 bg-brand-900/40 text-brand-400 scale-110') : 'border-slate-700 bg-slate-950 text-slate-500'">
+                                <template x-if="done.a">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </template>
+                                <template x-if="!done.a">
+                                    <span class="text-[10px]" :class="isValid() ? 'font-bold' : ''">A</span>
+                                </template>
+                            </div>
+                            <div class="absolute left-3 top-6 bottom-[-24px] w-px bg-slate-800"></div>
+                            <h3 class="text-white font-medium mb-2" :class="isValid() ? 'text-brand-300' : ''">生成專屬設定
+                            </h3>
+                            <p class="text-sm text-slate-500 leading-relaxed">請完成左側欄位填寫，系統將自動為您生成一組加密封裝的
+                                JSON，包含捷徑連線所需的所有 Headers。</p>
+                        </div>
+
+                        <!-- Step B -->
+                        <div class="relative pl-10" :class="{'opacity-50': !done.a}">
+                            <div class="absolute left-0 top-0.5 w-6 h-6 rounded-full border transition-all duration-500 flex items-center justify-center z-10"
+                                :class="done.a ? (done.b ? 'border-brand-500/50 bg-brand-500 text-white' : 'border-brand-500 bg-brand-900/40 text-brand-400 scale-110') : 'border-slate-700 bg-slate-950 text-slate-500'">
+                                <template x-if="done.b">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </template>
+                                <template x-if="!done.b">
+                                    <span class="text-[10px]" :class="done.a ? 'font-bold' : ''">B</span>
+                                </template>
+                            </div>
+                            <div class="absolute left-3 top-6 bottom-[-24px] w-px bg-slate-800"></div>
+                            <div class="flex items-center justify-between mb-2">
+                                <h3 class="text-white font-medium" :class="{'text-brand-300': done.a}">複製並設定捷徑</h3>
+                                <button x-show="done.a" @click="copyCode"
+                                    class="text-[10px] px-2 py-1 rounded transition-all duration-300 active:scale-95"
+                                    :class="done.b ? 'bg-brand-500/20 text-brand-400 border border-brand-500/30' : 'bg-brand-500 text-white font-bold'">
+                                    <span x-text="copied ? '已複製 ✓' : (done.b ? '再次複製' : '點此複製')"></span>
+                                </button>
+                            </div>
+                            <div class="bg-slate-950/40 rounded-2xl p-4 border border-white/5 font-mono text-[10px] text-brand-300 break-all h-24 overflow-y-auto mb-4 custom-scrollbar"
+                                :class="{'border-brand-500/20': done.a}">
+                                <span x-text="done.a ? resultJson : '等待生成...'"></span>
+                            </div>
+                        </div>
+
+                        <!-- Step C -->
+                        <div class="relative pl-10" :class="{'opacity-50': !done.b}">
+                            <div class="absolute left-0 top-0.5 w-6 h-6 rounded-full border transition-all duration-500 flex items-center justify-center z-10"
+                                :class="done.b ? (done.c ? 'border-brand-500/50 bg-brand-500 text-white' : 'border-brand-500 bg-brand-900/40 text-brand-400 scale-110') : 'border-slate-700 bg-slate-950 text-slate-500'">
+                                <template x-if="done.c">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                </template>
+                                <template x-if="!done.c">
+                                    <span class="text-[10px]" :class="done.b ? 'font-bold' : ''">C</span>
+                                </template>
+                            </div>
+                            <h3 class="text-white font-medium mb-3">安裝 iOS 捷徑</h3>
+                            <button @click="done.b && (showGuide = true)"
+                                class="inline-flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-2xl text-sm font-medium transition-all group/link"
+                                :class="{'hover:bg-brand-500/10 hover:border-brand-500/30 text-white cursor-pointer': done.b, 'cursor-not-allowed text-slate-600': !done.b}">
+                                <svg class="w-5 h-5 group-hover/link:text-brand-400 transition-colors" fill="none"
+                                    stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122">
+                                    </path>
+                                </svg>
+                                <span>開啟安裝指南完成設定</span>
+                            </button>
+
+                            <p class="text-[10px] text-slate-500 mt-4 leading-normal">
+                                💡 詳細設定步驟亦可參考 <a
+                                    href="https://github.com/YuChieh-Chiu/Voice-Notion/blob/main/docs/SIRI_INTEGRATION_DEMO.md"
+                                    target="_blank" class="text-brand-400 underline underline-offset-2">Siri 整合文件</a>。
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="mt-8 p-4 bg-brand-500/5 rounded-2xl border border-brand-500/10">
+                        <div class="flex items-start gap-3">
+                            <span class="text-brand-400 pt-0.5">💡</span>
+                            <p class="text-[11px] text-brand-300 leading-relaxed font-light">
+                                <strong class="font-bold">隱私聲明：</strong>
+                                本網頁完全在使用者端的瀏覽器運行。您的 API Keys 僅會被編寫進 JSON 供您複製，絕不會儲存至我們的資料庫。建議您定期更換您的 API Keys。
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="mt-24 text-center space-y-4">
+            <div class="flex justify-center gap-6 text-slate-500 text-sm font-medium">
+                <a href="https://github.com/YuChieh-Chiu/Voice-Notion/" target="_blank"
+                    class="hover:text-brand-400 transition-all hover:scale-105 underline underline-offset-4 decoration-slate-700 hover:decoration-brand-400">GitHub</a>
+                <a href="https://github.com/YuChieh-Chiu/Voice-Notion/blob/main/docs/DEMO_GUIDE.md" target="_blank"
+                    class="hover:text-brand-400 transition-all hover:scale-105 underline underline-offset-4 decoration-slate-700 hover:decoration-brand-400">Documentation</a>
+                <a href="https://github.com/YuChieh-Chiu/Voice-Notion/blob/main/LICENSE" target="_blank"
+                    class="hover:text-brand-400 transition-all hover:scale-105 underline underline-offset-4 decoration-slate-700 hover:decoration-brand-400">AGPL-v3</a>
+            </div>
+            <p class="text-xs text-slate-700 font-medium">© 2026 Voice-Notion Project.</p>
+        </footer>
+
+        <!-- Guide Modal -->
+        <div x-show="showGuide" x-transition.opacity
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-xl"
+            x-cloak>
+            <div @click.away="showGuide = false"
+                class="glass-card w-full max-w-2xl max-h-[90vh] rounded-[2.5rem] overflow-hidden flex flex-col shadow-2xl ring-1 ring-white/10 animate-float">
+                <!-- Modal Header -->
+                <div class="p-8 border-b border-white/5 flex items-center justify-between bg-slate-900/40">
+                    <div class="flex items-center gap-4">
+                        <div
+                            class="w-10 h-10 rounded-2xl bg-brand-500/20 text-brand-400 flex items-center justify-center">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-white tracking-tight">iOS 捷徑安裝指南</h2>
+                            <p class="text-xs text-slate-500 font-medium">按照以下三個步驟，將 Voice-Notion 帶入您的 Siri</p>
+                        </div>
+                    </div>
+                    <button @click="showGuide = false" class="text-slate-400 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                <div class="mt-8 border-t border-white/10 pt-6 px-11">
+                    <h4 class="text-sm font-semibold text-white mb-2">快速使用設定參考文件</h4>
+                    <div class="flex flex-wrap gap-4">
+                        <a href="https://github.com/YuChieh-Chiu/Voice-Notion/blob/main/docs/DEMO_GUIDE.md"
+                            target="_blank"
+                            class="text-xs text-brand-300 hover:text-white flex items-center gap-1 transition-colors">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            快速使用全指南
+                        </a>
+                        <a href="https://github.com/YuChieh-Chiu/Voice-Notion/blob/main/docs/SIRI_INTEGRATION_DEMO.md"
+                            target="_blank"
+                            class="text-xs text-brand-300 hover:text-white flex items-center gap-1 transition-colors">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            Siri 快速設定
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Modal Content -->
+                <div class="p-8 overflow-y-auto custom-scrollbar space-y-12 flex-grow">
+                    <!-- Guide Step 1 -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">1</span>
+                            <h4 class="font-semibold text-white">建立捷徑與錄音</h4>
+                        </div>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">開啟「捷徑」App，建立新捷徑並加入「<b>錄音</b>」動作。</p>
+                        <div
+                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
+                            <img src="img/guide/step1.jpeg" alt="步驟 1: 錄音" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Guide Step 2 -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">2</span>
+                            <h4 class="font-semibold text-white">貼入 JSON 設定</h4>
+                        </div>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>文字</b>」動作，直接貼入從本頁面複製的 <b>JSON
+                                內容</b>。</p>
+                        <div
+                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
+                            <img src="img/guide/step2.jpeg" alt="步驟 2: 貼入 JSON" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Guide Step 3 -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">3</span>
+                            <h4 class="font-semibold text-white">解析設定內容</h4>
+                        </div>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>從輸入項目取得辭典</b>」，捷徑會將上方的文字解析為變數。</p>
+                        <div
+                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
+                            <img src="img/guide/step3.jpeg" alt="步驟 3: 解析" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Guide Step 4 -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">4</span>
+                            <h4 class="font-semibold text-white">設定 API 請求</h4>
+                        </div>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">加入「<b>取得 URL 的內容</b>」，方法設為 <b>POST</b>。在
+                            <b>標題 (Headers)</b> 選擇剛解析的「辭典」，並在「要求回覆本文」選擇<b>檔案</b>與<b>錄製的音訊</b>。
+                        </p>
+                        <div
+                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
+                            <img src="img/guide/step4.jpeg" alt="步驟 4: API" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+
+                    <!-- Guide Step 5 -->
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-3">
+                            <span
+                                class="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center text-xs font-bold ring-1 ring-brand-500/30">5</span>
+                            <h4 class="font-semibold text-white">設定通知與命名捷徑</h4>
+                        </div>
+                        <p class="text-sm text-slate-400 leading-relaxed ml-11">最後加入「<b>顯示通知</b>」並連結 URL
+                            內容。並將捷徑重新命名為「記筆記」。</p>
+                        <div
+                            class="aspect-[9/16] max-w-[240px] bg-slate-950/80 rounded-2xl border border-white/5 flex items-center justify-center overflow-hidden ml-11 ring-4 ring-slate-900/50 shadow-2xl">
+                            <img src="img/guide/step5.jpeg" alt="步驟 5: 通知" class="w-full h-full object-contain">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="p-8 border-t border-white/5 bg-slate-900/20">
+                    <button @click="finishInstallation()"
+                        class="w-full py-4 bg-gradient-to-r from-brand-600 to-brand-500 text-white rounded-2xl font-bold transition-all hover:shadow-lg hover:shadow-brand-500/20 active:scale-95 shadow-xl shadow-brand-500/10">
+                        完成安裝並開始使用
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Feedback Overlay -->
+    <div x-show="showSuccess" x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100"
+        x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100 scale-100"
+        x-transition:leave-end="opacity-0 scale-95"
+        class="fixed inset-0 z-[60] flex items-center justify-center px-4 bg-slate-950/80 backdrop-blur-md" x-cloak>
+        <div class="max-w-sm w-full bg-slate-900 border border-white/10 rounded-[2.5rem] p-8 text-center shadow-2xl relative overflow-hidden"
+            @click.away="showSuccess = false">
+            <div
+                class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-500 to-transparent opacity-50">
+            </div>
+            <div
+                class="w-20 h-20 bg-brand-500/20 text-brand-400 rounded-3xl flex items-center justify-center mx-auto mb-6 ring-1 ring-brand-500/30 shadow-inner">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h3 class="text-2xl font-bold text-white mb-3">安裝成功！</h3>
+            <div class="text-slate-400 space-y-4 text-sm leading-relaxed mb-8">
+                <p>現在您可以直接對着 iPhone 說：</p>
+                <div
+                    class="bg-slate-800/50 py-3 px-4 rounded-2xl border border-white/5 text-brand-300 font-medium tracking-wide">
+                    「嘿 Siri，記筆記」
+                </div>
+                <p>待捷徑開啟並開始錄音後，說出您的想法，稍候片刻便會自動同步到 Notion。</p>
+            </div>
+            <button @click="showSuccess = false"
+                class="w-full py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold transition-all active:scale-95 border border-white/5">
+                我知道了
+            </button>
+        </div>
+    </div>
+
+    <!-- Script Block -->
+    <script>
+        document.addEventListener('alpine:init', () => {
+            Alpine.data('setupFlow', () => ({
+                config: {
+                    gemini: '',
+                    notion: '',
+                    lineToken: '',
+                    lineUserId: ''
+                },
+                done: {
+                    a: false,
+                    b: false,
+                    c: false
+                },
+                showAdvanced: false,
+                showGuide: false,
+                showSuccess: false,
+                loading: false,
+                copied: false,
+                resultJson: '',
+
+                isValid() {
+                    return this.config.gemini.trim() !== '' &&
+                        this.config.notion.trim() !== '';
+                },
+
+                finishInstallation() {
+                    this.done.c = true;
+                    this.showGuide = false;
+                    this.showSuccess = true;
+                },
+
+                generateCode() {
+                    if (!this.isValid()) return;
+
+                    this.loading = true;
+                    this.done.a = false;
+
+                    // Simulated "Packaging" process for UI flair
+                    setTimeout(() => {
+                        const payload = {
+                            "X-Gemini-Api-Key": this.config.gemini.trim(),
+                            "X-Notion-Token": this.config.notion.trim()
+                        };
+
+                        if (this.config.lineToken.trim()) {
+                            payload["X-Line-Token"] = this.config.lineToken.trim();
+                        }
+                        if (this.config.lineUserId.trim()) {
+                            payload["X-Line-User-ID"] = this.config.lineUserId.trim();
+                        }
+
+                        this.resultJson = JSON.stringify(payload);
+                        this.loading = false;
+                        this.done.a = true;
+                    }, 1200);
+                },
+
+                async copyCode() {
+                    try {
+                        await navigator.clipboard.writeText(this.resultJson);
+                        this.copied = true;
+                        this.done.b = true;
+                        setTimeout(() => this.copied = false, 2000);
+                    } catch (err) {
+                        alert('無法複製到剪貼簿，請手動選取複製。');
+                    }
+                }
+            }))
+        })
+    </script>
+</body>
+
+</html>

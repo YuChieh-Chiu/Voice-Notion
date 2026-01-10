@@ -1,6 +1,10 @@
-# Siri 完整流程整合指南
+# 🛠️ Siri 完整流程整合指南 (管理者個人版)
 
-本文件說明如何將 iOS 的 Siri (捷徑) 與 Voice Notion 整合，實現透過語音喚醒並自動上傳錄音至系統的功能。
+> [!IMPORTANT]
+> **本文件適用於自架伺服器並使用個人 `SIRI_API_KEY` 的管理者。**
+> 如果您是透過 [展示頁面](https://voice-notion.jacktoholiday.uk/demo) 進行試用，請改點擊 [試用者 Siri 設定指南 (Demo Siri Guide)](./SIRI_INTEGRATION_DEMO.md)。
+
+本文件說明如何將 iOS 的 Siri (捷徑) 與您自架的 Voice Notion 整合，實現透過語音喚醒並自動上傳錄音至系統的功能。
 
 ## 1. API 規格
 
@@ -27,14 +31,14 @@
 ```
 
 ### 外部存取 (ngrok Setup)
-若要讓手機上的捷徑存取本機伺服器，需透過 ngrok 將 localhost 暴露至外網。
+若要讓手機上的捷徑存取本機 (localhost) 伺服器，需透過 ngrok 將 localhost 暴露至外網。
 
 1.  確認 ngrok 正在運行：
     ```bash
     ngrok http 8000
     ```
 2.  取得公用 URL (HTTPS)：
-    - 可在終端機查看，或瀏覽 [http://localhost:4040/api/tunnels](http://localhost:4040/api/tunnels)。
+    - 可在終端機查看，或瀏覽 `http://localhost:4040/api/tunnels`。
     - 範例：`https://2c9d5eb0ad00.ngrok-free.app`
 3.  **捷徑設定時使用此 URL**：
     - 將 `http://<YOUR_SERVER_IP>:8000` 替換為你的 ngrok URL。
@@ -64,19 +68,19 @@
 5.  **加入動作**：搜尋並加入「**顯示通知 (Show Notification)**」或「**朗讀文字 (Speak Text)**」。
     - 將顯示內容設為步驟 4 取得的結果 (例如：「已收到，開始處理」)。
 6.  **完成設定**：
-    - 點擊上方捷徑名稱，重新命名為「**記下來**」或你喜歡的 Siri 喚醒詞。
+    - 點擊上方捷徑名稱，重新命名為「**記筆記**」或你喜歡的 Siri 喚醒詞。
     - 點擊「完成」。
 
 > [!IMPORTANT]
 > **重要設定**
 > 1. 請使用 `/api/v1/note/ios` 端點
-> 2. **必須**在 Headers 加入 `X-API-Key`，否則會回傳 403 錯誤
-> 3. Request Body 設定為「File」而非「Form」
+> 2. **必須**在 Headers 加入 `X-API-Key`，否則會回傳 401 錯誤
+> 3. Request Body 設定為「檔案(File)」而非「表單(Form)」
 
 
 ## 3. 使用方式
 
-- **語音喚醒**：對 iPhone 說「嘿 Siri，記下來」，待 Siri 詢問「如果你準備好了...」或開始錄音介面時，說出你的想法。
+- **語音喚醒**：對 iPhone 說「嘿 Siri，記筆記」，待 Siri 開始錄音介面時，說出你的想法。
 - **手動執行**：將捷徑加到主畫面，點擊圖示即可開始錄音並上傳。
 
 ## 4. 測試指令 (cURL)
@@ -99,7 +103,7 @@ curl -X POST "http://localhost:8000/api/v1/note" \
 
 ## 5. 故障排除
 
-### 錯誤 403: 未授權存取
+### 錯誤 401: 未授權存取
 
 **原因**：未提供 API Key 或 Key 錯誤
 

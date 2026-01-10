@@ -56,39 +56,45 @@ free -h
 ```
 
 ### 2. 環境變數
-詳細設定請參考 `docs/ENVIRONMENT_VARIABLES.md`，生產環境重點檢查：
+詳細設定請參考 `docs/DEPLOYMENT_GUIDE_ADMIN.md`，生產環境重點檢查：
 - `ALLOWED_HOSTS`: 務必設定正確的網域名稱，避免 Host Header 攻擊。
 - `GEMINI_API_KEY`: 確保 Key 有足夠的 Quota。
 
-## 快速開始
+## 🎬 快速體驗 (Quick Start Demo)
 
-### 1. 安裝依賴
+如果您只是想體驗功能，無需部署伺服器：
+1.  準備您的 Google Gemini API Key 與 Notion Token。
+2. 前往我們的 [展示網頁 (Demo Page)](https://voice-notion.jacktoholiday.uk/demo)。
+3. 按照 **[試用者全指南 (Demo Guide)](./docs/DEMO_GUIDE.md)** 快速完成設定。
 
-```bash
-cd backend
-poetry install
-```
+---
 
-### 2. 設定環境變數
+## 🛠️ 自行部署 (Self-Hosted Admin)
 
-詳細設定步驟請參考 [docs/ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md)
+如果您希望建構專屬的私人系統，請遵循以下步驟：
 
+### 1. 部署指南
+詳細設定請參考 **[管理者部署指南 (Admin Guide)](./docs/DEPLOYMENT_GUIDE_ADMIN.md)**，重點包含：
+- `ENVIRONMENT VARIABLES`: 伺服器端的環境變數設定。
+- `SIRI_API_KEY`: 您的個人 iOS 捷徑驗證碼。
+
+### 2. 環境變數
 ```bash
 cp .env.example .env
-# 編輯 .env 填入 API Keys
-
-# 生成 Siri API Key
-openssl rand -hex 32
-# 將結果填入 .env 的 SIRI_API_KEY
+# 生成管理員專用 API Key (SIRI_API_KEY)
+openssl rand -hex 32 
 ```
 
-### 3. 啟動服務
+### 3. Siri 捷徑整合
+參考 **[Siri 完整整合指南 (管理員版)](./docs/SIRI_INTEGRATION_ADMIN.md)** 完成手機端設定。
+
+### 4. 啟動服務
 
 ```bash
 docker-compose up --build
 ```
 
-### 4. 測試 API
+### 5. 測試 API
 
 **標準端點**（無需 API Key）：
 ```bash
@@ -103,7 +109,7 @@ curl -X POST http://localhost:8000/api/v1/note/ios \
   --data-binary @test.m4a
 ```
 
-詳細的 Siri 整合設定請參考 [docs/SIRI_INTEGRATION.md](docs/SIRI_INTEGRATION.md)
+詳細的 Siri 整合設定請參考 [docs/SIRI_INTEGRATION_ADMIN.md](docs/SIRI_INTEGRATION_ADMIN.md)
 
 ## 專案結構
 
@@ -134,4 +140,4 @@ backend/
 
 ## License
 
-- 待補
+本專案採用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 進行授權，詳細內容請參閱 [LICENSE](LICENSE) 檔案。
