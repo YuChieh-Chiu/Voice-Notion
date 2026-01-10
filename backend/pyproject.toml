@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "voice-notion"
-version = "0.3.0"
+version = "0.5.0"
 description = "Voice Notion - Voice-to-Notion Automation"
 authors = ["YuChieh-Chiu <81817517+YuChieh-Chiu@users.noreply.github.com>"]
 readme = "README.md"
+license = "AGPL-3.0-only"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4"

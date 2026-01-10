@@ -4,13 +4,14 @@ LLM Service - Gemini
 """
 import json
 import os
-from typing import Dict, List, Any
 from pathlib import Path
+from typing import Dict, List, Any, Optional
 from google import genai
 from google.genai import types
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.prompts.routing import ROUTING_PROMPT
+from app.schemas.context import UserContext, AuthType
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -49,10 +50,19 @@ ROUTING_SCHEMA = genai.types.Schema(
 class LLMService:
     """Large Language Model Service - 兩階段架構"""
     
-    def __init__(self):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    def __init__(self, context: Optional[UserContext] = None):
+        if context and context.type == AuthType.DEMO:
+            self.is_demo = True
+            if not context.gemini_key:
+                raise ValueError("Demo mode requires a gemini_key")
+            api_key = context.gemini_key
+        else:
+            api_key = settings.GEMINI_API_KEY
+            self.is_demo = False
+
+        self.client = genai.Client(api_key=api_key)
         self.templates_dir = Path(__file__).parent.parent / "prompts" / "templates"
-        logger.info("Gemini client initialized")
+        logger.info(f"Gemini client initialized (Mode: {'Demo' if self.is_demo else 'Admin'})")
     
     def route(
         self, 

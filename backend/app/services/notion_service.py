@@ -8,40 +8,45 @@ from notion_client import Client
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.utils.markdown_parser import NotionMarkdownParser
+from app.schemas.context import UserContext, AuthType
 
 settings = get_settings()
 logger = get_logger(__name__)
 
-# Simple In-Memory Cache (since we skipped Redis for now)
-# Structure: {"data": result, "expires_at": timestamp}
-_page_tree_cache = {}
+# Cache per token to ensure multi-tenancy safety
+# Structure: {token: {"data": result, "expires_at": timestamp}}
+_token_caches = {}
 
 class NotionService:
     """Notion API Service"""
-    
-    def __init__(self):
-        self.client = Client(auth=settings.NOTION_TOKEN)
+    def __init__(self, context: Optional[UserContext] = None):
+        if context and context.type == AuthType.DEMO:
+            self.is_demo = True
+            if not context.notion_token:
+                raise ValueError("Demo mode requires a notion_token")
+            self.auth_token = context.notion_token
+        else:
+            self.auth_token = settings.NOTION_TOKEN
+            self.is_demo = False
+
+        self.client = Client(auth=self.auth_token)
         self.md_parser = NotionMarkdownParser()
-        logger.info("Notion client initialized")
+        logger.info(f"Notion client initialized (Mode: {'Demo' if self.is_demo else 'Admin'})")
     
     def sync_page_tree(self) -> Dict[str, List[Dict[str, str]]]:
         """
         同步取得 Page Tree (Roots & Subpages)
-        快取 30 分鐘
-        
-        Returns:
-            {
-                "roots": [{"id": "...", "title": "..."}],
-                "subpages": [{"id": "...", "parent_id": "...", "title": "..."}]
-            }
+        快取 30 分鐘 (Per Token)
         """
-        global _page_tree_cache
+        global _token_caches
         now = datetime.now()
         
+        cache = _token_caches.get(self.auth_token)
+        
         # Check Cache
-        if _page_tree_cache and now < _page_tree_cache.get("expires_at", now):
+        if cache and now < cache.get("expires_at", now):
             logger.info("Hit Page Tree Cache")
-            return _page_tree_cache["data"]
+            return cache["data"]
             
         try:
             # Step 1: Search Roots (All accessible pages)
@@ -107,12 +112,12 @@ class NotionService:
             }
             
             # Update Cache (30 mins)
-            _page_tree_cache = {
+            _token_caches[self.auth_token] = {
                 "data": result,
                 "expires_at": now + timedelta(minutes=30)
             }
             
-            logger.info(f"Synced {len(roots)} roots and {len(subpages)} subpages")
+            logger.info(f"Synced {len(roots)} roots and {len(subpages)} subpages for token {self.auth_token[:8]}...")
             return result
             
         except Exception as e:
@@ -154,9 +159,9 @@ class NotionService:
             
             # Proactively Update Cache (instead of invalidation)
             # This ensures the new page is immediately available for Append actions
-            global _page_tree_cache
-            if _page_tree_cache and "data" in _page_tree_cache:
-                _page_tree_cache["data"]["subpages"].append({
+            global _token_caches
+            if self.auth_token in _token_caches:
+                _token_caches[self.auth_token]["data"]["subpages"].append({
                     "id": new_page["id"],
                     "parent_id": parent_id,
                     "title": title

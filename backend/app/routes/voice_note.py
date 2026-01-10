@@ -4,12 +4,14 @@ Voice Note Routes
 """
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 from app.schemas.voice_note import VoiceNoteResponse
 from app.worker.tasks import process_voice_note
 from app.core.logger import get_logger
 from app.config import get_settings
 from app.services.audio_validator import validate_audio_format, validate_file_size, MAX_FILE_SIZE
+from app.core.dependencies import get_user_context
+from app.schemas.context import UserContext
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -22,7 +24,8 @@ router = APIRouter(
 
 @router.post("/note", response_model=VoiceNoteResponse, status_code=202)
 async def upload_voice_note(
-    audio: UploadFile = File(..., description="音訊檔案")
+    audio: UploadFile = File(..., description="音訊檔案"),
+    context: UserContext = Depends(get_user_context)
 ):
     """
     上傳語音筆記 (標準 multipart/form-data)
@@ -64,16 +67,10 @@ async def upload_voice_note(
         with open(file_path, "wb") as f:
             f.write(content)
         
-        logger.info(
-            f"Audio file saved (standard): {file_path}",
-            extra={
-                "size_mb": round(len(content) / 1024 / 1024, 2),
-                "format": file_ext
-            }
-        )
+        logger.info(f"Audio file saved (standard): {file_path}, Auth: {context.type}")
         
-        # 🚀 發送 Celery 任務
-        task = process_voice_note.delay(file_path)
+        # 🚀 發送 Celery 任務 (傳遞 Context Dict)
+        task = process_voice_note.delay(file_path, context.model_dump())
         logger.info(f"Task enqueued: {task.id}")
         
         return VoiceNoteResponse(
@@ -89,9 +86,12 @@ async def upload_voice_note(
 
 
 @router.post("/note/ios", response_model=VoiceNoteResponse, status_code=202)
-async def upload_voice_note_ios(request: Request):
+async def upload_voice_note_ios(
+    request: Request,
+    context: UserContext = Depends(get_user_context)
+):
     """
-    上傳語音筆記 (iOS Shortcuts 專用)
+    上傳語音筆記 (iOS Shortcuts 專用 / BYOK 支援)
     
     此端點接收原始二進位資料，適用於 iOS Shortcuts 的 File 上傳模式。
     
@@ -108,15 +108,6 @@ async def upload_voice_note_ios(request: Request):
     詳細設定請參考: docs/SIRI_INTEGRATION.md
     """
     try:
-        # 🔒 驗證 API Key
-        api_key = request.headers.get("X-API-Key")
-        if not api_key or api_key != settings.SIRI_API_KEY:
-            logger.warning(
-                f"Invalid API key attempt from {request.client.host}",
-                extra={"provided_key": api_key[:8] + "..." if api_key else None}
-            )
-            raise HTTPException(status_code=403, detail="未授權存取")
-        
         # 📦 讀取檔案內容
         content = await request.body()
         
@@ -137,16 +128,10 @@ async def upload_voice_note_ios(request: Request):
         with open(file_path, "wb") as f:
             f.write(content)
         
-        logger.info(
-            f"Audio file saved (iOS): {file_path}",
-            extra={
-                "size_mb": round(len(content) / 1024 / 1024, 2),
-                "format": file_ext
-            }
-        )
+        logger.info(f"Audio file saved (iOS): {file_path}, Auth: {context.type}")
         
-        # 🚀 發送 Celery 任務
-        task = process_voice_note.delay(file_path)
+        # 🚀 發送 Celery 任務 (傳遞 Context Dict)
+        task = process_voice_note.delay(file_path, context.model_dump())
         logger.info(f"Task enqueued: {task.id}")
         
         return VoiceNoteResponse(

@@ -4,23 +4,23 @@ Siri-Notion Backend
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import voice_note
-from app.config import get_settings
-
-# Unified Request Validation Handler
+from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+import os
+
+from app.routes import voice_note
+from app.config import get_settings
 from app.core.logger import get_logger
 
 logger = get_logger(__name__)
-
 settings = get_settings()
 
 app = FastAPI(
     title=settings.APP_NAME,
     description="語音筆記自動化系統",
-    version="0.3.0"
+    version="0.5.0"
 )
 
 # Trusted Host Middleware
@@ -43,7 +43,6 @@ async def validation_exception_handler(request, exc):
         err_copy = {k: str(v) if not isinstance(v, (str, int, float, bool, list, dict, type(None))) else v for k, v in error.items()}
         errors.append(err_copy)
     logger.warning(f"Request validation failed: {errors}")
-    logger.warning(f"Request content-type: {request.headers.get('content-type')}")
     return JSONResponse(
         status_code=422,
         content={"detail": errors},
@@ -61,6 +60,11 @@ app.add_middleware(
 
 # 註冊路由
 app.include_router(voice_note.router)
+
+# Mount Static Files (for Demo Page)
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 @app.get("/")
