@@ -15,42 +15,54 @@
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Outfit', 'Noto Sans TC', 'sans-serif'],
-                    },
-                    colors: {
-                        brand: {
-                            50: '#f5f3ff',
-                            100: '#ede9fe',
-                            200: '#ddd6fe',
-                            300: '#c4b5fd',
-                            400: '#a78bfa',
-                            500: '#8b5cf6',
-                            600: '#7c3aed',
-                            700: '#6d28d9',
-                            800: '#5b21b6',
-                            900: '#4c1d95',
+        // Defensive check for Tailwind CDN availability
+        if (window.tailwind) {
+            tailwind.config = {
+                darkMode: 'class',
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            sans: ['Outfit', 'Noto Sans TC', 'sans-serif'],
                         },
-                        slate: {
-                            950: '#020617',
-                        }
-                    },
-                    animation: {
-                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'float': 'float 6s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' },
+                        colors: {
+                            brand: {
+                                50: '#f5f3ff',
+                                100: '#ede9fe',
+                                200: '#ddd6fe',
+                                300: '#c4b5fd',
+                                400: '#a78bfa',
+                                500: '#8b5cf6',
+                                600: '#7c3aed',
+                                700: '#6d28d9',
+                                800: '#5b21b6',
+                                900: '#4c1d95',
+                            },
+                            slate: {
+                                950: '#020617',
+                            }
+                        },
+                        animation: {
+                            'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            'float': 'float 6s ease-in-out infinite',
+                        },
+                        keyframes: {
+                            float: {
+                                '0%, 100%': { transform: 'translateY(0)' },
+                                '50%': { transform: 'translateY(-10px)' },
+                            }
                         }
                     }
                 }
             }
+        } else {
+            console.error("Tailwind CSS failed to load. Please check your internet connection or ad-blocker.");
+            // Fallback: Notify user if styles are essential
+            document.addEventListener('DOMContentLoaded', () => {
+                const warning = document.createElement('div');
+                warning.className = 'fixed top-4 left-1/2 -translate-x-1/2 z-[100] bg-red-900/90 text-white px-4 py-2 rounded-lg text-xs font-bold border border-red-500/50 backdrop-blur-md';
+                warning.innerHTML = '⚠️ 樣式載入失敗 (CDN 被攔截)，請嘗試關閉廣告攔截器或 VPN 並重新整理網頁。';
+                document.body.appendChild(warning);
+            });
         }
     </script>
     <!-- Alpine.js -->

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 import os
 
@@ -69,8 +69,18 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")
 async def root():
-    """Health Check"""
+    """直接顯示 Demo 頁面 (或跳轉)"""
+    static_file = os.path.join(os.path.dirname(__file__), "static", "demo.html")
+    if os.path.exists(static_file):
+        return FileResponse(static_file)
     return {"status": "ok", "service": "Siri-Notion Backend"}
+
+
+@app.get("/demo")
+async def demo_page():
+    """Demo 頁面直達路徑"""
+    static_file = os.path.join(os.path.dirname(__file__), "static", "demo.html")
+    return FileResponse(static_file)
 
 
 @app.get("/health")
