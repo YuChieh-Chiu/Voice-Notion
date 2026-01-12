@@ -23,14 +23,16 @@
 
 - [功能特點](#功能特點)
 - [技術架構](#技術架構)
-- [快速體驗](#-快速體驗-quick-start-demo)
-- [自行部署](#️-自行部署-self-hosted-admin)
+- [部署建議](#部署建議-production-deployment)
+- [🎬 快速體驗 (Quick Start Demo)](#-快速體驗-quick-start-demo)
+- [🛠️ 自行部署 (Self-Hosted Admin)](#️-自行部署-self-hosted-admin)
 - [專案結構](#專案結構)
-- [授權條款](#license)
+- [開發說明](#開發說明)
+- [授權條款（License）](#授權條款license)
 
 ## 功能特點
 
-- **語音輸入**: 透過 Siri 錄音上傳（NOTE: 目前僅支援 Siri，其他語音助理尚未支援）
+- **語音輸入**: 透過 Siri 錄音上傳（其他語音助理尚未支援）
 - **安全機制** 🔒:
   - Magic Number 驗證（檔案簽章檢查）
   - 檔案大小限制（25MB）
@@ -160,6 +162,6 @@ backend/
 - Worker Container: 包含 STT 模型與 ffmpeg
 - 共用 codebase，透過不同 Dockerfile 達成分離
 
-## License
+## 授權條款（License）
 
 本專案採用 **GNU Affero General Public License v3.0 (AGPL-3.0)** 進行授權，詳細內容請參閱 [LICENSE](LICENSE) 檔案。
