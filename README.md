@@ -15,9 +15,9 @@
 
 ---
 
-**Voice-Notion** 是一個語音筆記自動化系統，讓你透過 **Siri 語音指令**快速記錄想法，並自動使用 AI 整理成結構化的 **Notion 筆記**。支援會議紀錄、待辦事項、靈感記錄等多種預設筆記類型，完全可自行部署（Self-Hosted）保護隱私。
+**Voice-Notion** 是一個語音筆記自動化系統 (AI Voice Note Automation)，讓你透過 **Siri 語音指令**快速記錄想法，並自動使用 AI 整理成結構化的 **Notion 筆記**。支援會議紀錄、待辦事項、靈感記錄等多種預設筆記類型，完全可自行部署（Self-Hosted）以保護隱私。
 
-**核心技術**：FastAPI、Celery、Faster-Whisper (STT)、Google Gemini (LLM)、Notion API、Docker
+**核心技術 (Tech Stack)**：FastAPI、Celery、Faster-Whisper (STT)、Google Gemini (LLM)、Notion API、Docker
 
 ## 📑 目錄
 
