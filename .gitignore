@@ -40,3 +40,6 @@ data/
 .DS_Store
 Thumbs.db
 .pytest_cache/
+
+# AI Development
+.ai_memory.md

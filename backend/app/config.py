@@ -30,9 +30,14 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     
     # Security
-    ALLOWED_HOSTS: list[str] = ["localhost", "127.0.0.1", "voice-notion.jacktoholiday.uk"]
+    ALLOWED_HOSTS: str = "localhost,127.0.0.1"  # 逗號分隔的允許主機列表，生產環境請加入您的網域
     BACKEND_CORS_ORIGINS: list[str] = ["*"]
-    TASK_ENCRYPTION_KEY: str = ""  #用於加密 Celery 任務酬載的 Fernet 金鑰
+    TASK_ENCRYPTION_KEY: str = ""  # 用於加密 Celery 任務酬載的 Fernet 金鑰
+    
+    @property
+    def allowed_hosts_list(self) -> list[str]:
+        """將 ALLOWED_HOSTS 字串轉為列表"""
+        return [host.strip() for host in self.ALLOWED_HOSTS.split(",") if host.strip()]
     
     class Config:
         env_file = ".env"

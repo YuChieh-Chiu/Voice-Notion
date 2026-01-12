@@ -26,7 +26,7 @@ app = FastAPI(
 # Trusted Host Middleware
 app.add_middleware(
     TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS
+    allowed_hosts=settings.allowed_hosts_list
 )
 
 @app.exception_handler(RequestValidationError)
