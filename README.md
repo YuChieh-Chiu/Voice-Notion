@@ -1,10 +1,32 @@
 <div align="center">
   <img src="assets/voice-notion-logo.png" alt="Voice-Notion Logo" width="200">
+  
+  # Voice-Notion 語音筆記助理
+  
+  **透過 Siri 快速將語音轉換為結構化 Notion 筆記**
+  
+  [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+  [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+  [![FastAPI](https://img.shields.io/badge/FastAPI-0.128+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+  [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+  
+  [🎬 立即體驗](https://voice-notion.jacktoholiday.uk/demo) • [📖 部署指南](./docs/DEPLOYMENT_GUIDE_ADMIN.md) • [💬 回報問題](https://github.com/YuChieh-Chiu/Voice-Notion/issues)
 </div>
 
-# Voice-Notion 語音筆記助理
+---
 
-一個整合語音助理、FastAPI、Celery 與 Notion 的語音筆記自動化系統。
+**Voice-Notion** 是一個語音筆記自動化系統，讓你透過 **Siri 語音指令**快速記錄想法，並自動使用 AI 整理成結構化的 **Notion 筆記**。支援會議紀錄、待辦事項、靈感記錄等多種預設筆記類型，完全可自行部署（Self-Hosted）保護隱私。
+
+**核心技術**：FastAPI、Celery、Faster-Whisper (STT)、Google Gemini (LLM)、Notion API、Docker
+
+## 📑 目錄
+
+- [功能特點](#功能特點)
+- [技術架構](#技術架構)
+- [快速體驗](#-快速體驗-quick-start-demo)
+- [自行部署](#️-自行部署-self-hosted-admin)
+- [專案結構](#專案結構)
+- [授權條款](#license)
 
 ## 功能特點
 
