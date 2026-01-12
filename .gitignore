@@ -43,3 +43,9 @@ Thumbs.db
 
 # AI Development
 .ai_memory.md
+
+# Personal Development Notes (keep local only)
+docs/AUDIO_FORMAT_VALIDATION.md
+docs/GEMINI_EXAMPLE.py
+docs/PROJECT_REQUIREMENTS.md
+docs/SERVER_SECURITY_GUIDE.md
