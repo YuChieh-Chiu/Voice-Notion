@@ -15,5 +15,4 @@ RUN poetry config virtualenvs.create false \
 # Copy application code
 COPY . .
 
-# NOTE: 是否統一讓 docker compose 去管理就好？
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -45,7 +45,6 @@ async def upload_voice_note(
     安全機制:
     - 檔案大小限制 (25MB)
     - Magic Number 格式驗證
-    - 身份驗證: # TODO（未來整合 OAuth）
     """
     try:
         # 📦 讀取檔案內容

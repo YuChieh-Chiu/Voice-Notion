@@ -20,5 +20,4 @@ RUN poetry config virtualenvs.create false \
 # Copy application code
 COPY . .
 
-# NOTE: 是否統一讓 docker compose 去管理就好？
 CMD ["celery", "-A", "app.core.celery_app", "worker", "--loglevel=info"]
