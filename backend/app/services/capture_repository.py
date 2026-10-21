@@ -2,6 +2,7 @@
 
 import fcntl
 import hashlib
+import json
 import os
 import re
 import sqlite3
@@ -48,6 +49,10 @@ class CaptureRepository:
                     size_bytes INTEGER NOT NULL, sha256 TEXT NOT NULL,
                     cloud_id TEXT, cloud_url TEXT, state TEXT NOT NULL DEFAULT 'local',
                     revision INTEGER NOT NULL DEFAULT 0, UNIQUE(capture_id, role)
+                );
+                CREATE TABLE IF NOT EXISTS capture_checkpoints (
+                    capture_id TEXT NOT NULL REFERENCES captures(id), name TEXT NOT NULL,
+                    value TEXT NOT NULL, PRIMARY KEY(capture_id, name)
                 );
             """)
         self.database.chmod(0o600)
@@ -112,13 +117,14 @@ class CaptureRepository:
         mime_type: str,
         source_key: str | None = None,
         encrypted_context: str | None = None,
+        stored_extension: str | None = None,
     ) -> tuple[CaptureRecord, bool]:
         """先可靠寫入位元組再登記；重送不覆蓋既有來源或刪除標記。"""
         source_key = source_key or uuid.uuid4().hex
         record_id = "C" + uuid.uuid4().hex[:16]
         name = original_name.replace("\\", "/").split("/")[-1]
         name = re.sub(r"[\x00-\x1f\x7f]", " ", name)[:255] or "attachment"
-        extension = Path(name).suffix.lower()
+        extension = stored_extension or Path(name).suffix.lower()
         if not re.fullmatch(r"\.[a-z0-9]{1,10}", extension):
             extension = ".bin"
         filename = "original" + (".txt" if kind == "text" else extension)
@@ -266,3 +272,19 @@ class CaptureRepository:
         for file in self.files(capture_id):
             path = self.directory(capture_id) / file.name
             path.unlink(missing_ok=True)
+
+    def checkpoint(self, capture_id: str, name: str):
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM capture_checkpoints WHERE capture_id=? AND name=?",
+                (capture_id, name),
+            ).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def save_checkpoint(self, capture_id: str, name: str, value) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO capture_checkpoints(capture_id,name,value) VALUES(?,?,?) "
+                "ON CONFLICT(capture_id,name) DO UPDATE SET value=excluded.value",
+                (capture_id, name, json.dumps(value, ensure_ascii=False)),
+            )
