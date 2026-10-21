@@ -16,3 +16,4 @@ scripts/data
 *credentials*.json
 *service_account*.json
 *service-account*.json
+*client_secret*.json

@@ -10,8 +10,7 @@ venv/
 ENV/
 env/
 
-# Poetry
-poetry.lock
+# Poetry lock is tracked for reproducible deployments
 
 # IDE
 .vscode/
@@ -21,7 +20,12 @@ poetry.lock
 
 # Environment
 .env
-.env.local
+.env.*
+!.env.example
+*credentials*.json
+*client_secret*.json
+*.key
+*.pem
 
 # Data
 backend/scripts/data/

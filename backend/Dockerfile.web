@@ -1,18 +1,8 @@
-FROM python:3.10-slim
-
+FROM python:3.13-slim
 WORKDIR /app
-
-# Install Poetry
-RUN pip install poetry==1.8.0
-
-# Copy dependency files
-COPY pyproject.toml ./
-
-# Install dependencies (WITHOUT worker group)
+RUN pip install --no-cache-dir poetry==2.5.1
+COPY pyproject.toml poetry.lock ./
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-root --without worker
-
-# Copy application code
-COPY . .
-
+    && poetry install --no-root --only main --no-interaction
+COPY app ./app
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
