@@ -30,6 +30,7 @@ env/
 # Data
 backend/scripts/data/
 data/
+data-uat/
 *.wav
 *.m4a
 *.mp3

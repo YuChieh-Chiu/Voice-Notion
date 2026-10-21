@@ -125,6 +125,8 @@ BYOK 仍限自己的 Notion，透過單一 `X-Voice-Notion-Config` JSON header �
 
 ## 離線驗證
 
+逐項操作、通過條件、隔離環境與驗收紀錄見 [測試與驗收指南](TESTING_GUIDE.md)。
+
 ```bash
 cd backend
 poetry install --only main,dev,setup

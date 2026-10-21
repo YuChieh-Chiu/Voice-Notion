@@ -161,6 +161,8 @@ backend/
 
 ## 開發說明
 
+逐項確認功能請依 [測試與驗收指南](docs/TESTING_GUIDE.md)，先跑離線回歸，再使用獨立 UAT 環境測真實服務。
+
 - Web Container: 輕量，不包含 faster-whisper
 - Worker Container: 包含 STT 模型與 ffmpeg
 - 共用 codebase，透過不同 Dockerfile 達成分離
