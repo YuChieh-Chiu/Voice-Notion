@@ -216,6 +216,9 @@ class DriveStorage:
         raise ValueError("Managed file is outside the configured Drive roots")
 
     def upload(self, file: CaptureFile, *, replace: bool = False) -> CaptureFile:
+        file = self.repository.file(file.id)
+        if self.repository.get(file.capture_id).status in ("delete_pending", "deleted"):
+            raise ValueError("Removed captures cannot upload")
         if file.state in ("trash_pending", "trashed", "missing"):
             raise ValueError("Removed files cannot be recreated")
         folder = self.ensure_capture_folder(file.capture_id)
@@ -275,6 +278,11 @@ class DriveStorage:
             request._in_error_state = True
         response = None
         while response is None:
+            if self.repository.get(file.capture_id).status in (
+                "delete_pending",
+                "deleted",
+            ) or self.repository.file(file.id).state in ("trash_pending", "trashed", "missing"):
+                raise ValueError("Upload cancelled by deletion intent")
             try:
                 _, response = request.next_chunk(num_retries=2)
             except HttpError as exc:

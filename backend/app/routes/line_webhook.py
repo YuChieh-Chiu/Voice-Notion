@@ -39,8 +39,10 @@ async def webhook(request: Request):
             source = event.get("source", {})
             if source.get("type") != "user" or source.get("userId") != settings.LINE_USER_ID:
                 continue
-            if event.get("type") not in ("message", "postback"):
+            if event.get("type") not in ("message", "postback", "unsend"):
                 continue
+            if event.get("type") == "unsend":
+                store.revoke(event.get("unsend", {}).get("messageId", ""))
             event_id = store.accept(event)
             if event_id:
                 process_line_event.delay(event_id)

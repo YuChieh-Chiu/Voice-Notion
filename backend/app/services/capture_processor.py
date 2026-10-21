@@ -70,6 +70,8 @@ class CaptureProcessor:
                                 pass
                     raise
             record = repository.get(capture_id)
+            if record.status in REMOVED_CAPTURE_STATES:
+                return {"status": "removed", "capture_id": capture_id}
             url = record.notion_url or (
                 f"https://drive.google.com/drive/folders/{record.folder_id}"
                 if record.folder_id
@@ -83,7 +85,8 @@ class CaptureProcessor:
                 "title": repository.checkpoint(capture_id, "title") or capture_id,
             }
             # 目的地已可靠保存，通知重試不再需要本機音訊／逐字稿。
-            repository.remove_local_files(capture_id)
+            if not repository.checkpoint(capture_id, "note_metadata_pending"):
+                repository.remove_local_files(capture_id)
             if not record.notified:
                 self.notifier_factory(context=context).push_message(
                     result["title"],

@@ -11,6 +11,7 @@ from app.core.security import TaskSecurity
 from app.services.audio_validator import validate_audio_format
 from app.services.capture_management import CaptureManagement
 from app.services.capture_repository import CaptureRepository
+from app.services.deletion_service import DeletionService
 from app.services.line_client import LineClient
 
 EVENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
@@ -20,9 +21,30 @@ class LineEventStore:
     def __init__(self, repository: CaptureRepository):
         self.repository = repository
         with repository.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS line_events (id TEXT PRIMARY KEY, "
                 "payload TEXT, status TEXT NOT NULL DEFAULT 'pending', error_code TEXT)"
+            )
+            columns = {r["name"] for r in conn.execute("PRAGMA table_info(line_events)")}
+            if "message_id" not in columns:
+                conn.execute("ALTER TABLE line_events ADD COLUMN message_id TEXT")
+
+    def revoked(self, message_id):
+        return bool(self.repository.system_value("line_revoked:" + message_id))
+
+    def revoke(self, message_id):
+        if not isinstance(message_id, str) or not EVENT_ID.fullmatch(message_id):
+            raise ValueError("Invalid LINE unsend message ID")
+        self.repository.save_system_value("line_revoked:" + message_id, True)
+        with self.repository.connection() as conn:
+            conn.execute(
+                "UPDATE captures SET status='delete_pending',revision=revision+1 WHERE owner_id='owner' AND source_key=? AND status!='deleted'",
+                ("line:" + message_id,),
+            )
+            conn.execute(
+                "UPDATE line_events SET status='complete',payload=NULL WHERE message_id=?",
+                (message_id,),
             )
 
     @contextmanager
@@ -40,10 +62,16 @@ class LineEventStore:
         event_id = event.get("webhookEventId", "")
         if not isinstance(event_id, str) or not EVENT_ID.fullmatch(event_id):
             raise ValueError("Invalid webhook event ID")
+        message_id = (
+            event.get("message", {}).get("id", "") if event.get("type") == "message" else ""
+        )
+        if message_id and self.revoked(message_id):
+            return None
         encrypted = TaskSecurity.encrypt_payload(event)
         with self.repository.connection() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO line_events(id,payload) VALUES(?,?)", (event_id, encrypted)
+                "INSERT OR IGNORE INTO line_events(id,payload,message_id) VALUES(?,?,?)",
+                (event_id, encrypted, message_id),
             )
             status = conn.execute(
                 "SELECT status FROM line_events WHERE id=?", (event_id,)
@@ -79,9 +107,32 @@ class LineEventProcessor:
             source = event.get("source", {})
             if source.get("type") != "user" or source.get("userId") != self.settings.LINE_USER_ID:
                 raise ValueError("Unauthorized LINE event")
-            if event["type"] == "postback":
+            if event["type"] == "unsend":
+                message_id = event.get("unsend", {}).get("messageId", "")
+                self.store.revoke(message_id)
+                record = self.repository.find_source("owner", "line:" + message_id)
+                if record:
+                    DeletionService(self.repository, self.settings).retract(record.id)
+                self.client.push(
+                    "收回已處理：服務管理內容已撤下。另存副本、Atlas 衍生內容與供應商備份不在此範圍。",
+                    key="event:" + event_id,
+                )
+            elif event["type"] == "postback":
                 data = event.get("postback", {}).get("data", "")
-                command = "/review " + data[7:] if data.startswith("review:") else "/help"
+                command = "/help"
+                for prefix, verb in [
+                    ("review:", "/review "),
+                    ("confirm:", "/confirm "),
+                    ("cancel:", "/cancel "),
+                    ("clear-original:", "/clear "),
+                ]:
+                    if data.startswith(prefix):
+                        command = (
+                            verb
+                            + data[len(prefix) :]
+                            + (" original" if prefix == "clear-original:" else "")
+                        )
+                        break
                 self.command(command, event_id)
             elif event["type"] == "message":
                 message = event.get("message", {})
@@ -94,22 +145,99 @@ class LineEventProcessor:
     def command(self, command: str, event_id: str):
         parts = command.split()
         management = CaptureManagement(self.repository)
+        deletion = DeletionService(self.repository, self.settings)
+        actions = []
+        result = self.repository.system_value("line_command:" + event_id)
+        if result:
+            self.client.push(result["text"], key="event:" + event_id, actions=result["actions"])
+            return
         try:
             if len(parts) == 2 and parts[0] == "/files":
                 text = management.describe(parts[1])
             elif len(parts) == 2 and parts[0] == "/review":
-                record = management.review(parts[1])
+                record = deletion.review(parts[1])
                 text = f"{record.id} 已確認完整原文與摘要；尚未清理任何檔案。"
+                if record.destination == "drive" and record.kind == "audio":
+                    actions = [
+                        {
+                            "type": "postback",
+                            "label": "預覽清理原檔",
+                            "data": "clear-original:" + record.id,
+                        }
+                    ]
+            elif parts and parts[0] == "/clear":
+                if len(parts) >= 2 and parts[1] == "reviewed":
+                    options = dict(p.split("=", 1) for p in parts[2:])
+                    if options.keys() - {"topic", "before"}:
+                        raise ValueError("未知篩選條件")
+                    preview = deletion.preview(
+                        "reviewed", category=options.get("topic"), before=options.get("before")
+                    )
+                elif len(parts) == 3 and parts[1] == "file":
+                    preview = deletion.preview("file", file_id=parts[2])
+                elif len(parts) == 3:
+                    preview = deletion.preview(parts[2], capture_id=parts[1])
+                else:
+                    raise ValueError(
+                        "請指定 /clear C代號 original 或 all，或 /clear file F代號、/clear reviewed"
+                    )
+                text = "\n".join(
+                    [
+                        f"清理預覽：{preview['count']} 檔／{preview['total_bytes']} bytes",
+                        *[
+                            f"{f['capture_id']} {f['id']} {f['role']} {f['bytes']} bytes"
+                            for f in preview["files"]
+                        ],
+                        preview["warning"],
+                        "確認限時有效；確認只處理這份清單。",
+                    ]
+                )
+                if len(text) > 4400:
+                    deletion.cancel(preview["token"])
+                    raise ValueError("清單太長，請用 topic=主題 或 before=YYYY-MM-DD 縮小範圍")
+                actions = [
+                    {
+                        "type": "postback",
+                        "label": "確認移到垃圾桶",
+                        "data": "confirm:" + preview["token"],
+                    },
+                    {"type": "postback", "label": "取消", "data": "cancel:" + preview["token"]},
+                ]
+            elif len(parts) == 2 and parts[0] == "/confirm":
+                outcome = deletion.confirm(parts[1])
+                text = (
+                    "清理完成"
+                    if outcome["complete"]
+                    else "部分清理失敗；可重送本次確認以重試失敗項目"
+                ) + "\n"
+                text += (
+                    "\n".join(f"{f['file_id']}: {f['status']}" for f in outcome["files"])
+                    + "\n"
+                    + outcome["message"]
+                )
+                if outcome["metadata_errors"]:
+                    text += (
+                        "\n筆記來源狀態尚未更新："
+                        + ", ".join(item["capture_id"] for item in outcome["metadata_errors"])
+                        + "。網路故障可重試；若外部編輯衝突，需依部署指南人工調和，請勿持續重點確認。"
+                    )
+            elif len(parts) == 2 and parts[0] == "/cancel":
+                text = "清理確認狀態：" + deletion.cancel(parts[1])["status"]
             else:
-                text = "管理指令：/files C代號、/review C代號。校對表示已檢查完整原文與摘要。"
-        except (ValueError, KeyError):
-            text = "找不到可操作的收件，或該收件尚未具備完整原文與摘要。"
-        self.client.push(text, key="event:" + event_id)
+                text = "指令：/files C代號、/review C代號、/clear C代號 original|all、/clear file F代號、/clear reviewed [topic=主題] [before=YYYY-MM-DD]。未校對或只有原檔時，請明確選擇指定檔案或整筆。"
+        except (ValueError, KeyError) as exc:
+            text = str(exc) if isinstance(exc, ValueError) else "找不到可操作的收件或確認清單。"
+        self.repository.save_system_value(
+            "line_command:" + event_id, {"text": text, "actions": actions}
+        )
+        self.client.push(text, key="event:" + event_id, actions=actions)
 
     def capture(self, message: dict, event_id: str):
         kind, message_id = message.get("type"), message.get("id", "")
         if not isinstance(message_id, str) or not EVENT_ID.fullmatch(message_id):
             raise ValueError("Invalid LINE message ID")
+        if self.store.revoked(message_id):
+            return
         if kind not in ("text", "audio", "image", "file"):
             self.client.push("目前支援文字、語音、圖片與檔案。", key="event:" + event_id)
             return
@@ -166,4 +294,7 @@ class LineEventProcessor:
             stored_extension=extension,
             source_key=key,
         )
+        if self.store.revoked(message_id):
+            DeletionService(self.repository, self.settings).retract(record.id)
+            return
         self.enqueue(record.id)

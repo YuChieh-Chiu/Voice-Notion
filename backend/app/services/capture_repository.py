@@ -259,6 +259,13 @@ class CaptureRepository:
         if not fields or fields.keys() - allowed:
             raise ValueError("Invalid capture update")
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if fields.get("status") not in (None, *REMOVED_CAPTURE_STATES):
+                row = conn.execute(
+                    "SELECT status FROM captures WHERE id=?", (capture_id,)
+                ).fetchone()
+                if row and row["status"] in REMOVED_CAPTURE_STATES:
+                    raise ValueError("Removed captures cannot resume processing")
             conn.execute(
                 "UPDATE captures SET "
                 + ",".join(f"{key}=?" for key in fields)
@@ -270,6 +277,13 @@ class CaptureRepository:
         if not fields or fields.keys() - {"cloud_id", "cloud_url", "state"}:
             raise ValueError("Invalid file update")
         with self.connection() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            if fields.get("state") in ("allocated", "uploaded"):
+                row = conn.execute(
+                    "SELECT state FROM capture_files WHERE id=?", (file_id,)
+                ).fetchone()
+                if row and row["state"] in ("trash_pending", "trashed", "missing"):
+                    raise ValueError("Removed files cannot resume uploading")
             conn.execute(
                 "UPDATE capture_files SET "
                 + ",".join(f"{key}=?" for key in fields)
@@ -278,9 +292,12 @@ class CaptureRepository:
             )
 
     def remove_local_files(self, capture_id: str) -> None:
-        for file in self.files(capture_id):
-            path = self.directory(capture_id) / file.name
-            path.unlink(missing_ok=True)
+        directory = self.directory(capture_id)
+        if directory.exists():
+            # 此私人目錄只屬於本來源，也清除程序中斷留下、尚未登記的 atomic-write 暫存。
+            for path in directory.iterdir():
+                if path.is_file() or path.is_symlink():
+                    path.unlink(missing_ok=True)
 
     def checkpoint(self, capture_id: str, name: str):
         with self.connection() as conn:
