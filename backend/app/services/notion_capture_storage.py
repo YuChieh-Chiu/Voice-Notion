@@ -97,6 +97,12 @@ class NotionCaptureStorage:
             text_block("原始名稱：" + record.original_name),
             text_block("完整原文／未潤飾逐字稿", "heading_3"),
         ]
+        if record.source_url:
+            source = "提供的來源網址：" + record.source_url
+            blocks[3:3] = [
+                text_block(source[i : i + NOTION_TEXT_CHUNK])
+                for i in range(0, len(source), NOTION_TEXT_CHUNK)
+            ]
         blocks.extend(
             text_block(source_text[i : i + NOTION_TEXT_CHUNK])
             for i in range(0, len(source_text), NOTION_TEXT_CHUNK)
@@ -193,6 +199,8 @@ class NotionCaptureStorage:
                     raise NotionWriteUncertain("Known capture block moved or is inaccessible")
                 if block_fingerprint(block) != expected:
                     raise NotionWriteUncertain("Capture block was externally changed")
+                if block.get("has_children"):
+                    raise NotionWriteUncertain("Capture block contains externally added children")
                 self.service.client.blocks.delete(block_id=block_id)
         if page.get("created_for_capture"):
             remote_page = self.service.client.pages.retrieve(page_id=page["id"])

@@ -1,11 +1,12 @@
 """相容 Siri 上傳與個人文字收件；可靠保存後才送入佇列。"""
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.config import get_settings
 from app.core.dependencies import get_personal_context, get_user_context
 from app.core.security import TaskSecurity
+from app.schemas.capture import validate_source_url
 from app.schemas.context import AuthType, UserContext
 from app.schemas.voice_note import VoiceNoteResponse
 from app.services.audio_validator import validate_audio_format
@@ -18,6 +19,9 @@ router = APIRouter(prefix="/api/v1", tags=["Capture"])
 
 class TextCaptureInput(BaseModel):
     text: str = Field(min_length=1, max_length=1_000_000)
+    source_url: str | None = Field(default=None, max_length=2048)
+
+    _source_url = field_validator("source_url")(validate_source_url)
 
 
 def enqueue_capture(
@@ -28,6 +32,7 @@ def enqueue_capture(
     channel: str,
     context: UserContext,
     stored_extension: str | None = None,
+    source_url: str | None = None,
 ) -> VoiceNoteResponse:
     if not content or len(content) > settings.CAPTURE_MAX_BYTES:
         raise HTTPException(status_code=413 if content else 400, detail="Invalid capture size")
@@ -52,6 +57,7 @@ def enqueue_capture(
         mime_type=mime_type,
         encrypted_context=encrypted,
         stored_extension=stored_extension,
+        source_url=source_url,
     )
     try:
         task = process_capture.delay(record.id)
@@ -103,5 +109,11 @@ async def capture_text(
     if not payload.text.strip() or len(payload.text) > settings.CAPTURE_MAX_TEXT_CHARS:
         raise HTTPException(status_code=400, detail="Text is empty or exceeds the configured limit")
     return enqueue_capture(
-        payload.text.encode(), "original.txt", "text/plain", "text", "http", context
+        payload.text.encode(),
+        "original.txt",
+        "text/plain",
+        "text",
+        "http",
+        context,
+        source_url=payload.source_url,
     )

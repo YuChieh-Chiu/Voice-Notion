@@ -12,6 +12,7 @@ settings = get_settings()
 class NotificationService:
     def __init__(self, context: UserContext | None = None):
         config = settings
+        self.personal = not context or context.type != AuthType.DEMO
         if context and context.type == AuthType.DEMO:
             config = settings.model_copy(
                 update={
@@ -35,7 +36,7 @@ class NotificationService:
         status = "原檔已保存，未解析" if original_only else "完整原文與摘要已保存"
         text = f"✅ {status}\n{title}\n{capture_id or ''}\n{url}\n雲端保存成功；本機同步狀態請於 Drive 確認。"
         actions = []
-        if capture_id:
+        if capture_id and self.personal:
             actions.append({"type": "message", "label": "查看檔案", "text": "/files " + capture_id})
             if not original_only:
                 actions.append(

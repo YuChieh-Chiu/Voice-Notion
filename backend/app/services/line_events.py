@@ -173,8 +173,8 @@ class LineEventProcessor:
                     preview = deletion.preview(
                         "reviewed", category=options.get("topic"), before=options.get("before")
                     )
-                elif len(parts) == 3 and parts[1] == "file":
-                    preview = deletion.preview("file", file_id=parts[2])
+                elif len(parts) >= 3 and parts[1] == "file":
+                    preview = deletion.preview("files", file_ids=parts[2:])
                 elif len(parts) == 3:
                     preview = deletion.preview(parts[2], capture_id=parts[1])
                 else:

@@ -206,7 +206,7 @@ class CaptureProcessor:
             "received_at": record.created_at,
             "captured_via": record.channel,
             "authorship": "not_confirmed",
-            "source_url": None,
+            "source_url": record.source_url,
             "original_filename": record.original_name,
             "original_status": "present",
             "review_status": "pending",

@@ -1,6 +1,7 @@
 """收件與內容檔案的穩定資料格式。"""
 
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -8,6 +9,21 @@ CaptureKind = Literal["text", "audio", "image", "file"]
 CaptureChannel = Literal["siri", "http", "line"]
 FileRole = Literal["original", "transcript", "note"]
 PERSONAL_OWNER = "owner"
+
+
+def validate_source_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    parsed = urlsplit(value)
+    if (
+        len(value) > 2048
+        or parsed.scheme not in ("https", "http")
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError("Invalid source URL")
+    return value
 
 
 class CaptureRecord(BaseModel):
@@ -19,6 +35,7 @@ class CaptureRecord(BaseModel):
     destination: Literal["notion", "drive"]
     original_name: str
     created_at: str
+    source_url: str | None = None
     status: str = "pending"
     category: str | None = None
     reviewed_at: str | None = None

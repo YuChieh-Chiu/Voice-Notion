@@ -18,9 +18,10 @@ router = APIRouter(
 
 
 class DeletionPreviewInput(BaseModel):
-    scope: Literal["original", "file", "all", "reviewed"]
+    scope: Literal["original", "file", "files", "all", "reviewed"]
     capture_id: str | None = Field(default=None, pattern=r"^C[0-9a-f]{16}$")
     file_id: str | None = Field(default=None, pattern=r"^F[0-9a-f]{16}$")
+    file_ids: list[str] | None = Field(default=None, min_length=1, max_length=500)
     category: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,31}$")
     before: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
 

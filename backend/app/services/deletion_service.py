@@ -9,7 +9,7 @@ from contextlib import ExitStack
 
 from app.config import Settings
 from app.services.capture_management import CaptureManagement
-from app.services.capture_repository import CaptureRepository
+from app.services.capture_repository import CaptureRepository, utc_timestamp
 from app.services.drive_storage import DriveStorage
 from app.services.notion_capture_storage import NotionCaptureStorage
 from app.services.notion_service import NotionService
@@ -55,7 +55,15 @@ class DeletionService:
         )
 
     def preview(
-        self, scope, *, capture_id=None, file_id=None, owner_id="owner", category=None, before=None
+        self,
+        scope,
+        *,
+        capture_id=None,
+        file_id=None,
+        file_ids=None,
+        owner_id="owner",
+        category=None,
+        before=None,
     ):
         repository = self.repository
         records, selected = [], []
@@ -73,9 +81,15 @@ class DeletionService:
                 if len(batch) < 500:
                     break
                 offset += len(batch)
-        elif scope == "file":
-            file = repository.file(file_id)
-            records = [repository.get(file.capture_id, owner_id)]
+        elif scope in ("file", "files"):
+            selected_ids = set(file_ids or []) if scope == "files" else {file_id}
+            if not selected_ids or len(selected_ids) > self.settings.DELETION_MAX_FILES:
+                raise ValueError("請提供上限內的明確檔案清單")
+            selected_files = [repository.file(selected_id) for selected_id in selected_ids]
+            records = [
+                repository.get(selected_capture, owner_id)
+                for selected_capture in sorted({f.capture_id for f in selected_files})
+            ]
         elif scope in ("original", "all"):
             records = [repository.get(capture_id, owner_id)]
         else:
@@ -108,7 +122,7 @@ class DeletionService:
                         )
             snapshots[record.id] = {"revision": record.revision, "files": [f.id for f in files]}
             for file in files:
-                if (scope == "file" and file.id != file_id) or (
+                if (scope in ("file", "files") and file.id not in selected_ids) or (
                     scope in ("original", "reviewed") and file.role != "original"
                 ):
                     continue
@@ -322,8 +336,9 @@ class DeletionService:
             "message": "垃圾桶仍占容量；永久刪除請至 Drive 操作。",
         }
 
-    def trash_file(self, file, *, expected=None, approved_md5=None):
+    def trash_file(self, file, *, expected=None, approved_md5=None, reason="manual_clear"):
         if file.state in ("trashed", "missing"):
+            self.remember_removal(file, reason)
             return file.state
         state = "trashed"
         if file.cloud_id:
@@ -351,8 +366,16 @@ class DeletionService:
                     ).execute(num_retries=2)
         (self.repository.directory(file.capture_id) / file.name).unlink(missing_ok=True)
         self.repository.update_file(file.id, state=state, cloud_url=None)
+        self.remember_removal(file, reason)
         self.repository.save_checkpoint(file.capture_id, "drive_upload:" + file.id, None)
         return state
+
+    def remember_removal(self, file, reason):
+        key = "removed:" + file.id
+        if not self.repository.checkpoint(file.capture_id, key):
+            self.repository.save_checkpoint(
+                file.capture_id, key, {"recorded_at": utc_timestamp(), "reason": reason}
+            )
 
     def refresh_note(self, capture_id):
         record = self.repository.get(capture_id)
@@ -385,9 +408,15 @@ class DeletionService:
         )
         updates = {
             "review_status": "confirmed" if record.reviewed_at else "pending",
-            "original_status": "trashed" if original_removed else "present",
+            "original_status": files["original"].state if original_removed else "present",
             "source_status": "removed" if source_removed else "present",
         }
+        if original_removed:
+            removal = (
+                self.repository.checkpoint(capture_id, "removed:" + files["original"].id) or {}
+            )
+            updates["original_removal_recorded_at"] = removal.get("recorded_at")
+            updates["original_removal_reason"] = removal.get("reason")
         for key, value in updates.items():
             pattern = r"^" + key + r":[^\n]*$"
             line = key + ": " + json.dumps(value)
@@ -423,7 +452,7 @@ class DeletionService:
         with self.repository.connection() as conn:
             conn.execute("DELETE FROM capture_checkpoints WHERE capture_id=?", (capture_id,))
             conn.execute(
-                "UPDATE captures SET status='deleted',original_name='',category=NULL,reviewed_at=NULL,notion_url=NULL,encrypted_context=NULL,error_code=NULL,notified=1,revision=revision+1 WHERE id=?",
+                "UPDATE captures SET status='deleted',original_name='',source_url=NULL,category=NULL,reviewed_at=NULL,notion_url=NULL,encrypted_context=NULL,error_code=NULL,notified=1,revision=revision+1 WHERE id=?",
                 (capture_id,),
             )
             conn.execute(
@@ -444,5 +473,5 @@ class DeletionService:
             else:
                 for file in self.repository.files(capture_id):
                     self.repository.update_file(file.id, state="trash_pending")
-                    self.trash_file(self.repository.file(file.id))
+                    self.trash_file(self.repository.file(file.id), reason="line_unsend")
             self.finish_retraction(capture_id)

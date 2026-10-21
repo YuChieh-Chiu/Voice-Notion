@@ -37,7 +37,7 @@ class CaptureRepository:
                 CREATE TABLE IF NOT EXISTS captures (
                     id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, source_key TEXT NOT NULL,
                     channel TEXT NOT NULL, kind TEXT NOT NULL, destination TEXT NOT NULL,
-                    original_name TEXT NOT NULL, created_at TEXT NOT NULL,
+                    original_name TEXT NOT NULL, created_at TEXT NOT NULL, source_url TEXT,
                     status TEXT NOT NULL DEFAULT 'pending', category TEXT, reviewed_at TEXT,
                     folder_id TEXT, notion_url TEXT, encrypted_context TEXT, error_code TEXT,
                     notified INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +56,11 @@ class CaptureRepository:
                 );
                 CREATE TABLE IF NOT EXISTS capture_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
+            conn.execute("BEGIN IMMEDIATE")
+            if "source_url" not in {
+                row["name"] for row in conn.execute("PRAGMA table_info(captures)")
+            }:
+                conn.execute("ALTER TABLE captures ADD COLUMN source_url TEXT")
         self.database.chmod(0o600)
 
     @contextmanager
@@ -127,6 +132,7 @@ class CaptureRepository:
         source_key: str | None = None,
         encrypted_context: str | None = None,
         stored_extension: str | None = None,
+        source_url: str | None = None,
     ) -> tuple[CaptureRecord, bool]:
         """先可靠寫入位元組再登記；重送不覆蓋既有來源或刪除標記。"""
         source_key = source_key or uuid.uuid4().hex
@@ -155,6 +161,7 @@ class CaptureRepository:
                 destination=destination,
                 original_name=name,
                 created_at=utc_timestamp(),
+                source_url=source_url,
                 encrypted_context=encrypted_context,
             )
             values = record.model_dump()
