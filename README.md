@@ -3,7 +3,7 @@
   
   # Voice-Notion 語音筆記助理
   
-  **透過 Siri 快速將語音轉換為結構化 Notion 筆記**
+  **Siri／LINE 收件，保存完整原文與摘要至 Google Drive 或 Notion**
   
   [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -32,12 +32,14 @@
 
 ## 功能特點
 
+多來源版本已加入 LINE 文字／語音／圖片／檔案收件、HTTP 文字與 Drive 保存。Drive 文字兩檔、語音三檔，圖片／PDF 只存原檔；Notion 不存附件。LINE 的 `/files`、`/review`、`/clear` 共用管理服務，先預覽、再確認移至垃圾桶。完整設定與恢復方式見 [部署指南](docs/DEPLOYMENT_GUIDE_ADMIN.md) 與 [實作計畫](docs/MULTI_SOURCE_CAPTURE_PLAN.md)。
+
 - **語音輸入**: 透過 Siri 錄音上傳（其他語音助理尚未支援）
 - **安全機制** 🔒:
   - Magic Number 驗證（檔案簽章檢查）
   - 檔案大小限制（25MB）
-  - API Key 驗證（iOS 端點）
-  - **傳輸加密**: Celery 任務酬載 AES 加密保護
+  - API Key 驗證（個人上傳與管理端點）；LINE 驗簽與私聊白名單
+  - **私人持久化**: broker 只傳 ID；BYOK context／待處理 LINE 事件用 Fernet 加密
   - **快取安全**: Notion Token 雜湊化與 TTL 管理
 - **自動轉錄**: Faster-Whisper (CPU) 進行 STT
 - **兩階段 AI**:
@@ -52,7 +54,7 @@
 - **STT**: Faster-Whisper (Small/CPU)
 - **LLM**: Gemini Flash Lite（兩階段架構）
 - **Notification**: Line Messaging API
-- **Storage**: Notion API
+- **Storage**: Google Drive 或 Notion；SQLite 記錄收件狀態，共用私人 volume 保存必要暫存
 
 ## 部署建議 (Production Deployment)
 
@@ -115,20 +117,21 @@ openssl rand -hex 32
 ### 4. 啟動服務
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 ### 5. 測試 API
 
-**標準端點**（無需 API Key）：
+**標準端點**（需要個人 API Key，BYOK 另見部署指南）：
 ```bash
-curl -X POST http://localhost:8000/api/v1/note \
+curl -X POST http://localhost:8080/api/v1/note \
+  -H "X-API-Key: your-api-key" \
   -F "audio=@test.m4a"
 ```
 
 **iOS 端點**（需要 API Key）：
 ```bash
-curl -X POST http://localhost:8000/api/v1/note/ios \
+curl -X POST http://localhost:8080/api/v1/note/ios \
   -H "X-API-Key: your-api-key" \
   --data-binary @test.m4a
 ```

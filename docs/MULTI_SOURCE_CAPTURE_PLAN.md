@@ -40,7 +40,7 @@ Notion 頁面樹與 create／append 留在 Notion 模組；每筆有可定位來
 | `/files C123` | 列出該筆與檔案代號、狀態、私人連結 |
 | `/review C123` | 標記完整原文與摘要已校對，不清理 |
 | `/clear C123 original` | 預覽只移除原始附件，保留文字 |
-| `/clear file F456` | 預覽移除指定檔案 |
+| `/clear file F456 [F789…]` | 預覽移除指定單檔或跨筆檔案清單 |
 | `/clear C123 all` | 預覽移除整筆服務管理內容 |
 | `/clear reviewed` | 預覽批次移除已校對的原始附件，可依主題與日期縮小 |
 
