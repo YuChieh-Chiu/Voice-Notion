@@ -31,7 +31,9 @@ data/
 *.mp3
 
 # Docker
-.dockerignore
+!backend/.dockerignore
+.venv/
+.ruff_cache/
 
 # Logs
 *.log
