@@ -36,4 +36,5 @@ def test_transcribe_failure(stt_service):
     with pytest.raises(Exception) as excinfo:
         stt_service.transcribe("fake_audio.m4a")
 
-    assert "STT Error" in str(excinfo.value)
+    assert "Speech transcription failed" in str(excinfo.value)
+    assert "STT Error" not in str(excinfo.value)

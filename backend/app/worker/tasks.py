@@ -31,7 +31,8 @@ def capture_owner(context: UserContext) -> str:
 def process_capture(self, capture_id: str):
     repository = CaptureRepository(settings.CAPTURE_DATA_DIR)
     try:
-        return CaptureProcessor(repository, settings).process(capture_id)
+        result = CaptureProcessor(repository, settings).process(capture_id)
+        return {"status": result["status"], "capture_id": capture_id}
     except Exception as exc:
         logger.error("Capture processing failed: id=%s type=%s", capture_id, type(exc).__name__)
         raise self.retry(
@@ -67,7 +68,7 @@ def process_voice_note(self, file_path: str, encrypted_context: str | None = Non
     try:
         result = CaptureProcessor(repository, settings).process(record.id)
         path.unlink(missing_ok=True)
-        return result
+        return {"status": result["status"], "capture_id": record.id}
     except Exception as exc:
         logger.error("Legacy capture failed: id=%s type=%s", record.id, type(exc).__name__)
         raise self.retry(

@@ -4,6 +4,8 @@ import os
 
 from cryptography.fernet import Fernet
 
+from app.config import Settings
+
 os.environ.update(
     {
         "GEMINI_API_KEY": "test-gemini",
@@ -21,3 +23,6 @@ os.environ.update(
         "JEV_API_KEY": "",
     }
 )
+
+# 所有模組的 get_settings() 也不得解析任何私人 dotenv。
+Settings.model_config["env_file"] = None
