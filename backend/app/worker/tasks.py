@@ -10,6 +10,7 @@ from app.core.security import TaskSecurity
 from app.schemas.context import AuthType, UserContext
 from app.services.capture_processor import CaptureProcessor
 from app.services.capture_repository import CaptureRepository
+from app.services.line_events import LineEventProcessor
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -71,4 +72,23 @@ def process_voice_note(self, file_path: str, encrypted_context: str | None = Non
         logger.error("Legacy capture failed: id=%s type=%s", record.id, type(exc).__name__)
         raise self.retry(
             exc=RuntimeError("Capture processing failed"), countdown=60 * (2**self.request.retries)
+        ) from None
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    soft_time_limit=settings.CAPTURE_TASK_TIMEOUT_SECONDS,
+    time_limit=settings.CAPTURE_TASK_TIMEOUT_SECONDS + 30,
+)
+def process_line_event(self, event_id: str):
+    try:
+        LineEventProcessor(
+            CaptureRepository(settings.CAPTURE_DATA_DIR), settings, process_capture.delay
+        ).process(event_id)
+    except Exception as exc:
+        logger.error("LINE event failed: id=%s type=%s", event_id, type(exc).__name__)
+        raise self.retry(
+            exc=RuntimeError("LINE event processing failed"),
+            countdown=60 * (2**self.request.retries),
         ) from None

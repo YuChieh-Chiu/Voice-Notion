@@ -59,6 +59,15 @@ class CaptureProcessor:
                         repository.update_capture(
                             capture_id, status="failed", error_code=type(exc).__name__
                         )
+                        if record.destination == "drive" and any(
+                            f.role == "original" and f.state == "uploaded"
+                            for f in repository.files(capture_id)
+                        ):
+                            try:
+                                self.notifier_factory(context=context).push_partial(capture_id)
+                            except Exception:
+                                # 保留原始處理失敗供重試；通知本身使用獨立、穩定 retry key。
+                                pass
                     raise
             record = repository.get(capture_id)
             url = record.notion_url or (
@@ -76,7 +85,12 @@ class CaptureProcessor:
             # 目的地已可靠保存，通知重試不再需要本機音訊／逐字稿。
             repository.remove_local_files(capture_id)
             if not record.notified:
-                self.notifier_factory(context=context).push_message(result["title"], url)
+                self.notifier_factory(context=context).push_message(
+                    result["title"],
+                    url,
+                    capture_id=capture_id,
+                    original_only=record.kind in ("image", "file"),
+                )
                 repository.update_capture(capture_id, notified=True, encrypted_context=None)
             return result
 

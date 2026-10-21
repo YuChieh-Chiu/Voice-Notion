@@ -106,6 +106,14 @@ class CaptureRepository:
             ).fetchall()
         return [CaptureRecord(**dict(row)) for row in rows]
 
+    def find_source(self, owner_id: str, source_key: str) -> CaptureRecord | None:
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM captures WHERE owner_id=? AND source_key=?",
+                (owner_id, source_key),
+            ).fetchone()
+        return CaptureRecord(**dict(row)) if row else None
+
     def create(
         self,
         *,

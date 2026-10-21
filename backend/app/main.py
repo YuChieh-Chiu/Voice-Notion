@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.core.request_limits import RequestBodyLimitMiddleware
-from app.routes import voice_note
+from app.routes import line_webhook, voice_note
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -60,6 +60,7 @@ app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.CAPTURE_MAX_BY
 
 # 註冊路由
 app.include_router(voice_note.router)
+app.include_router(line_webhook.router)
 
 # Mount Static Files (for Demo Page)
 static_dir = os.path.join(os.path.dirname(__file__), "static")
