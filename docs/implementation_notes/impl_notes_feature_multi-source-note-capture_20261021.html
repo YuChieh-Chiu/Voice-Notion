@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-Hant"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice-Notion 多來源收件實作紀錄</title>
+<style>body{max-width:1000px;margin:40px auto;padding:0 20px;font:16px/1.8 system-ui;color:#172437}article{border:1px solid #cbd5e1;border-radius:12px;padding:20px;margin:20px 0}dt{font-weight:700}dd{margin:0 0 12px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #cbd5e1;padding:10px;text-align:left}code{overflow-wrap:anywhere}</style>
+<h1>多來源收件實作紀錄</h1><p>分支 <code>feature/multi-source-note-capture</code>；2026-10-21。<a href="../MULTI_SOURCE_CAPTURE_PLAN.md">已確認實作計畫</a>為驗收基準。</p>
+<p>每階段經獨立 subagent 審查，修正必修項後才 commit／push；不部署實帳號、不呼叫付費模型。</p>
+<table><caption>階段與審查紀錄</caption><tr><th>階段</th><th>狀態</th><th>驗證與獨立審查</th></tr>
+<tr id="stage-0"><td>0 決策定稿</td><td>審查通過</td><td>review_stage_0 獨立審查及複審：已修正附件範圍與階段順序；適用確定性檢查通過，無 High／Critical。HTML 語法與本機連結已驗證。</td></tr>
+<tr id="stage-A"><td>A 收件基礎</td><td>待實作</td><td>設定、持久化、個人授權。</td></tr>
+<tr id="stage-B"><td>B 核心與 Notion</td><td>待實作</td><td>來源與摘要分開、相容 Siri／BYOK。</td></tr>
+<tr id="stage-C"><td>C Drive 與分類</td><td>待實作</td><td>OAuth、續傳、去重、受限主題。</td></tr>
+<tr id="stage-D"><td>D LINE 收件</td><td>待實作</td><td>簽章、私聊、重送、有限下載。</td></tr>
+<tr id="stage-E"><td>E 清理與收回</td><td>待實作</td><td>確認清單、垃圾桶、取消／重放、競態。</td></tr>
+<tr id="stage-F"><td>F 整合與部署說明</td><td>待實作</td><td>離線全流程、部署組態。</td></tr></table>
+<article><h2>持久化來源與佇列分開</h2><dl><dt>決定</dt><dd>SQLite 記錄來源、成果、校對及刪除狀態，私人 volume 存必要暫存；Celery 只傳來源 ID 與必要的加密 context。</dd><dt>原因</dt><dd>Redis 結果不是永久來源紀錄；重試、去重及清理需要共用可靠狀態。</dd><dt>影響</dt><dd>本版限定同機 web／worker 共享本機 volume；多主機需更換管理資料庫與暫存。</dd><dt>驗證</dt><dd>暫存資料庫測試重送、重試與刪除後不再建回。</dd><dt>狀態</dt><dd>方案已確認，待實作。</dd></dl></article>
+<article><h2>精簡保存與目的地隔離</h2><dl><dt>決定</dt><dd>Drive 文字兩檔、語音三檔；圖片／PDF 僅原檔。Notion 只保存完整文字與摘要；BYOK 限自己的 Notion。</dd><dt>原因</dt><dd>支援原文回查與獨立清理，不累積每階段永久副本。</dd><dt>影響</dt><dd>OCR、附件摘要、Notion 附件、Atlas 索引及歷史遷移不在本版。</dd><dt>驗證</dt><dd>離線替身驗證檔案集合、來源完整性與隔離。</dd><dt>狀態</dt><dd>使用者已確認。</dd></dl></article>
+<article><h2>LINE 管理與垃圾桶</h2><dl><dt>決定</dt><dd>指令與按鈕共用清理服務；人工校對後手動清原檔，指定檔案／整筆可明確移除唯一內容；只移至垃圾桶。</dd><dt>原因</dt><dd>LINE 作為日常入口，預覽明確清單避免範圍歧義。</dd><dt>影響</dt><dd>需要身分綁定、限時清單與去重；刪除必須阻止舊任務再建回。</dd><dt>驗證</dt><dd>偽造身分、過期／重放、跨來源刪除與工作競態測試。</dd><dt>狀態</dt><dd>使用者已確認。</dd></dl></article>
+<article><h2>外部審查流程的適用範圍</h2><dl><dt>決定</dt><dd>參考指定 commit／code-review 技能通用流程；以個人部署及允許的雲端寫入為威脅模型。</dd><dt>原因</dt><dd>Wayken 的多品牌、唯讀資料層、skills 鏡像等屬另一 repo 的規則。</dd><dt>影響</dt><dd>外部檢查腳本因本 repo 沒有 skills 鏡像報錯，此項記為不適用；lint、secret、位置及命名仍獨立檢查。</dd><dt>驗證</dt><dd>逐階段保存測試與審查結論；實帳號 IAM／OAuth 權限列為無法從 repo 驗證。</dd><dt>狀態</dt><dd>已執行外部腳本；初始文件無 secret 或禁止檔案。</dd></dl></article>
+</html>
