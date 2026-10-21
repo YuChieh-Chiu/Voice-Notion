@@ -8,7 +8,7 @@
 <tr id="stage-0"><td>0 決策定稿</td><td>審查通過</td><td>review_stage_0 獨立審查及複審：已修正附件範圍與階段順序；適用確定性檢查通過，無 High／Critical。HTML 語法與本機連結已驗證。</td></tr>
 <tr id="stage-A"><td>A 收件基礎</td><td>審查通過</td><td>13 測試、Ruff、diff 檢查通過；review_stage_a 獨立四程序去重與權限驗證通過，無必修或 High／Critical。既有全套基準 4 失敗、2 錯誤（舊測試介面）於 B 修正。</td></tr>
 <tr id="stage-B"><td>B 核心與 Notion</td><td>審查通過</td><td>35 測試、Ruff、diff 檢查通過；review_stage_b 複審已確認原始名稱修復、純文字分塊與通知重試，無必修或 High／Critical。Notion 寫入不確定時查 marker，找不到則保守停止。</td></tr>
-<tr id="stage-C"><td>C Drive 與分類</td><td>待實作</td><td>OAuth、續傳、去重、受限主題。</td></tr>
+<tr id="stage-C"><td>C Drive 與分類</td><td>審查通過</td><td>54 測試、Ruff、diff 通過；review_stage_c 找到並複審修正首塊回應遺失與跨程序 Range 查詢。真實 SDK 離線 transport 驗證 404／410 與最終回應遺失，無必修或 High／Critical。新增官方 Google SDK／OAuth 及 httpx，供固定官方端點與有限逾時。</td></tr>
 <tr id="stage-D"><td>D LINE 收件</td><td>待實作</td><td>簽章、私聊、重送、有限下載。</td></tr>
 <tr id="stage-E"><td>E 清理與收回</td><td>待實作</td><td>確認清單、垃圾桶、取消／重放、競態。</td></tr>
 <tr id="stage-F"><td>F 整合與部署說明</td><td>待實作</td><td>離線全流程、部署組態。</td></tr></table>

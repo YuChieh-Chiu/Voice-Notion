@@ -20,6 +20,9 @@ python-dotenv = "^1.2.1"
 mistune = "^3.2.0"
 cachetools = "^6.2.4"
 cryptography = "^46.0.3"
+google-api-python-client = ">=2.180,<3"
+google-auth = ">=2.40,<3"
+httpx = ">=0.28,<0.29"
 
 
 [build-system]

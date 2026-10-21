@@ -54,6 +54,7 @@ class CaptureRepository:
                     capture_id TEXT NOT NULL REFERENCES captures(id), name TEXT NOT NULL,
                     value TEXT NOT NULL, PRIMARY KEY(capture_id, name)
                 );
+                CREATE TABLE IF NOT EXISTS capture_settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
             """)
         self.database.chmod(0o600)
 
@@ -287,4 +288,19 @@ class CaptureRepository:
                 "INSERT INTO capture_checkpoints(capture_id,name,value) VALUES(?,?,?) "
                 "ON CONFLICT(capture_id,name) DO UPDATE SET value=excluded.value",
                 (capture_id, name, json.dumps(value, ensure_ascii=False)),
+            )
+
+    def system_value(self, name: str):
+        with self.connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM capture_settings WHERE name=?", (name,)
+            ).fetchone()
+        return json.loads(row["value"]) if row else None
+
+    def save_system_value(self, name: str, value) -> None:
+        with self.connection() as conn:
+            conn.execute(
+                "INSERT INTO capture_settings(name,value) VALUES(?,?) "
+                "ON CONFLICT(name) DO UPDATE SET value=excluded.value",
+                (name, json.dumps(value)),
             )
