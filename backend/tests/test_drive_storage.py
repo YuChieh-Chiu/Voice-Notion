@@ -113,16 +113,21 @@ def test_summary_failure_keeps_original_cloud_file_and_resumes(drive_setup):
     record = create(repository)
     llm = MagicMock()
     llm.summarize.side_effect = [RuntimeError("test failure"), "summary"]
+    notifier = MagicMock()
+    notifier.push_partial.side_effect = RuntimeError("notification also failed")
     processor = CaptureProcessor(
         repository,
         settings,
         drive_factory=lambda *args: storage,
         llm_factory=lambda **kwargs: llm,
-        notifier_factory=lambda **kwargs: MagicMock(),
+        notifier_factory=lambda **kwargs: notifier,
     )
     with pytest.raises(RuntimeError):
         processor.process(record.id)
     original = repository.files(record.id)[0]
     assert original.state == "uploaded" and fake.content[original.cloud_id] == b"complete source"
+    notifier.push_partial.assert_called_once_with(record.id)
+    notifier.push_message.assert_not_called()
     processor.process(record.id)
+    notifier.push_message.assert_called_once()
     assert sum(op == ("upload", original.cloud_id) for op in fake.operations) == 1
