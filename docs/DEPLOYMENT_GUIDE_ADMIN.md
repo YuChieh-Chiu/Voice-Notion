@@ -26,6 +26,8 @@ web 與 worker 使用相同固定 Fernet 金鑰，DEBUG 也不產生臨時金鑰
 
 Compose 只把 nginx 綁在 `127.0.0.1:8080`，請於前方配置 HTTPS reverse proxy／受控 tunnel，並把正式網域加入 `ALLOWED_HOSTS`。Redis 不對主機公開，AOF 每秒同步且使用獨立 volume；最末一秒的佇列在硬故障下仍可能遺失，永久來源紀錄在 SQLite，可依 ID 重試。不要以 `docker compose down -v` 清理正式資料。
 
+內層 nginx 透過 Docker DNS（`127.0.0.11`）動態解析 `web`，讓重建 web 後的 IP 變動可自行恢復。開源 nginx 需 **1.27.3 以上**，搭配 upstream shared zone；目前 Compose 使用 `stable-alpine`，更新映像後先執行 `nginx -t`。獨立隔離測試在 1.30.6 驗證實際 IP 更換後約 8.36 秒恢復，nginx 無需重啟；這不是零停機或五秒內恢復的保證。[nginx 官方說明](https://nginx.org/en/docs/http/ngx_http_upstream_module.html#server)
+
 ```bash
 # 在專案根目錄，填妥 .env 後由操作者啟動
 docker compose up -d --build
