@@ -4,7 +4,7 @@
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。201 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。218 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **201 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **218 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -86,7 +86,7 @@ vn_uat ps
 curl --fail http://localhost:8081/health
 ```
 
-四個服務應啟動；health 回 `{"status":"healthy"}`。第一次語音轉錄會下載 STT 模型，記錄暖機與後續處理時間，不預設固定完成秒數。
+五個服務應啟動（web、worker、line-worker、nginx、Redis）；health 回 `{"status":"healthy"}`。第一次語音轉錄會下載 STT 模型，記錄暖機與後續處理時間，不預設固定完成秒數。
 
 Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或重放 callback 不改連接；Google 同意後建立私人根目錄、API status 不暴露 token；重啟服務仍連接。資料夾建立失敗按 finish 重試，同一 root ID 不增加副本；pending token 到期可重新同帳號授權。若未實際故障注入，恢復分支只記離線通過。Linode 外層代理另核對 callback query 不進日誌。本機映像若為 arm64，不能當成 Linode amd64／原生 STT 已驗收。
 
@@ -149,7 +149,7 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 **每次修改 `.env.uat` 都要重建容器設定；只用 restart 不會載入新環境變數：**
 
 ```bash
-vn_uat up -d --force-recreate web worker
+vn_uat up -d --force-recreate web worker line-worker
 ```
 
 ## 3. 第一次驗收：先完成一筆，再做清理
@@ -215,7 +215,7 @@ curl --fail-with-body -X POST http://localhost:8081/api/v1/note/ios \
 
 ## 5. 分類逐項驗收
 
-每次更改模式都編輯 `.env.uat` 並 `vn_uat up -d --force-recreate web worker`，再用**新收件**測試，不期待舊資料自動搬家。
+每次更改模式都編輯 `.env.uat` 並 `vn_uat up -d --force-recreate web worker line-worker`，再用**新收件**測試，不期待舊資料自動搬家。
 
 | 勾選／編號 | 設定與操作 | 通過條件 |
 | --- | --- | --- |
@@ -279,12 +279,12 @@ C10 的語音可在 Jev／Gemini 模式準備，確認實際分類後才做批�
 
 | 勾選／編號 | 故障注入方式 | 通過條件 |
 | --- | --- | --- |
-| [ ] F01 摘要失敗 | 暫時清空 UAT Gemini key，重建 web／worker，再以 HTTP 傳新文字 `#finance UAT-F01：預算1000元，尚未購買ETF。` | 原檔先成功在 Drive；status failed，沒有假摘要或 complete；有 LINE 時通知「原檔已保存，文字處理尚未完成」 |
-| [ ] F02 恢復摘要 | 恢復 key、重建兩服務，對同一 CID 用 `POST /api/v1/captures/{capture_id}/retry` | 沿用同一個原檔 cloud_id，最後只有 2 檔，內容正確；不另外建立來源 |
+| [ ] F01 摘要失敗 | 暫時清空 UAT Gemini key，重建 web／worker／line-worker，再以 HTTP 傳新文字 `#finance UAT-F01：預算1000元，尚未購買ETF。` | 原檔先成功在 Drive；status failed，沒有假摘要或 complete；有 LINE 時通知「原檔已保存，文字處理尚未完成」 |
+| [ ] F02 恢復摘要 | 恢復 key、重建 web／worker／line-worker 三服務，對同一 CID 用 `POST /api/v1/captures/{capture_id}/retry` | 沿用同一個原檔 cloud_id，最後只有 2 檔，內容正確；不另外建立來源 |
 | [ ] F03 通知失敗 | UAT LINE token 改成明顯無效的測試值；重建服務，改由 HTTP 送新文字 | Drive 內容 complete，但 notified=false；不能只用「沒收到 LINE」判斷保存失敗 |
 | [ ] F04 恢復通知 | 還原有效 LINE token、重建後 retry 原 CID | 收到通知，notified=true；雲端檔案數及 ID 不變，不重新轉錄／摘要 |
 | [ ] F05 QueueUnavailable | `vn_uat stop redis` 後經 HTTP 送新文字；若 client 先逾時，先恢復 Redis 再用 `GET /api/v1/captures` 找當次來源，不盲目重送 | 原文已在私人暫存；正常回覆為 503＋capture_id。還原 `vn_uat start redis`，對已登記 CID retry，最後內容正確 |
-| [ ] F06 正常重啟 | 記錄已完成／已刪 CID 與 cloud IDs，`vn_uat restart web worker redis` | 原紀錄與去重標記還在，不額外建立雲端副本；已刪內容不重生 |
+| [ ] F06 正常重啟 | 記錄已完成／已刪 CID 與 cloud IDs，`vn_uat restart web worker line-worker redis` | 原紀錄與去重標記還在，不額外建立雲端副本；已刪內容不重生 |
 | [ ] F07 停機後恢復 | `vn_uat down` 後再次 `vn_uat up -d`；**不加 -v** | SQLite 與 Redis volume 保留；原 CID 可查，已刪內容仍不重生 |
 | [ ] F08 Drive 尚未配置 | 在尚無 Web 連接的新 UAT，保留 Drive token／folder ID 空白，經 HTTP 收新文字 | 可先接受本機來源，但最後 failed，不能聲稱已存入 Drive；完成 Web 授權後 retry 同一 CID。既有 Web 連接不會因環境 folder ID 空白而消失，請勿刪除既有 DB 冒充未配置 |
 
@@ -301,7 +301,7 @@ C10 的語音可在 Jev／Gemini 模式準備，確認實際分類後才做批�
 
 ## 8. Notion 與 BYOK 相容驗收
 
-Drive 主線完成後才做這組。保留 UAT Drive 設定以便回查，將 `.env.uat` 的 `CAPTURE_DESTINATION` 改成 `notion`、填測試 Notion token 並授權可被頁面樹辨認的專用頂層測試根頁，重建 web／worker。不把正式筆記當測試目標。
+Drive 主線完成後才做這組。保留 UAT Drive 設定以便回查，將 `.env.uat` 的 `CAPTURE_DESTINATION` 改成 `notion`、填測試 Notion token 並授權可被頁面樹辨認的專用頂層測試根頁，重建 web／worker／line-worker。不把正式筆記當測試目標。
 
 | 勾選／編號 | 操作 | 通過條件 |
 | --- | --- | --- |
@@ -326,7 +326,7 @@ N08 要分別測 `GET /api/v1/captures`、`GET /api/v1/captures/{capture_id}`、
 | [ ] S02 偽造 LINE webhook | LINE 已配置時，不帶簽章 POST `{"events":[]}` 到 webhook | 401，沒有收件。若回 503 是尚未配置，不能算驗簽通過 |
 | [ ] S03 LINE 私聊白名單 | 測試第二個使用者私聊；測試 Bot 若允許群聊，再於群組傳訊息 | 不新增收件、不觸發模型或刪除；群聊未能實測時記離線測試證據，不假填通過 |
 | [ ] S04 格式與大小 | HTTP 傳假音訊，另傳超過 CAPTURE_MAX_BYTES 的測試檔 | 假音訊 400、超限 413，沒有可處理的新來源；副檔名不是格式驗證依據 |
-| [ ] S05 日誌 | 用獨特、無敏感性的句子完成一筆，私下檢視 `vn_uat logs --since 10m web worker` | 不含原文首行／全文／逐字稿、API key、refresh token；task 成功回傳只含 status／capture_id |
+| [ ] S05 日誌 | 用獨特、無敏感性的句子完成一筆，私下檢視 `vn_uat logs --since 10m web worker line-worker` | 不含原文首行／全文／逐字稿、API key、refresh token；task 成功回傳只含 status／capture_id |
 | [ ] S06 資料範圍 | 檢查 UAT volume、Drive 根目錄、Notion 測試頁與設定 | 沒有寫入正式 data 或 raw；只用測試 Channel；下載連結不建立公開權限 |
 
 不需要貼出真實金鑰來證明「未出現在日誌」。只保存檢查結論與遮罩後證據；不要提交 `.env.uat`、`data-uat`、LINE 原始 webhook 或帶憑證的 request headers。
@@ -361,3 +361,13 @@ vn_uat down
 ```
 
 不要加 `-v`、不要清空帳號垃圾桶。若確定不要測試收件，先用本服務只針對 UAT CID 的清理流程；測試 Channel、Drive 根目錄與資料夾的後續保留由你決定。把發現的問題連同項目 ID、版本與 CID 回報，不貼私人憑證。
+
+## 11. 本輪使用者確認與回應速度
+
+使用者最新回報：已完成清理驗收、摘要品質也已確認。這是本輪測試的人工結論，不回溯覆寫先前失敗紀錄，不要求重做全部功能；真人收回仍依其選擇跳過。Notion／BYOK、Siri 真手機、Mac 同步與 Linode 仍需各自證據。
+
+效能優化後，完整離線回歸為 218 項。兩個相同 UAT 保留文字、單一驗證階段的 metadata 查詢由 20 減為 10，實測 9.038 → 5.732 秒（約減少 37%）。實際位元組 SHA、範圍與私人權限仍逐階段驗；這個微型量測不是完整 LINE 指令的完成秒數或 SLA。私人報告：`data-uat/line-latency-{baseline,after}-20261023.json`。
+
+另一個本機簽署合成 `/help` 測試先確認兩個 worker 的 active／reserved／scheduled 全空，再暫停 UAT capture worker，排入一筆已完成且已通知來源的去重重試；LINE 仍在約 0.472 秒完成處理及 LINE API 接受，而 capture 仍在自己的佇列。host finally 恢復 worker，確認該重試完成且 capture／files 不變，9 項通過；沒有新來源、校對、預覽、清理或模型生成。loading API 接受也有獨立斷言，但不宣稱手機看見動畫或訊息送達。私人報告：`data-uat/line-queue-isolation-20261023.json`。
+
+這輪可只觀察 `/help`、`/file C代號`、校對／預覽按鈕的等待體驗。快查詢不呼叫 loading API；慢操作手機可能顯示動畫，桌面以最後回覆為準。佇列隔離是在 capture worker 暫停時驗證，尚未代表 Linode CPU 滿載表現。

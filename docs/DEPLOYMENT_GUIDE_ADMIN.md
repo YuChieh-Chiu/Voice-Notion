@@ -4,7 +4,7 @@
 
 ## 安裝與持久化
 
-同一主機部署 web、worker、Redis；web／worker 必須共用 `./data:/data`，包括 SQLite、來源暫存與跨程序鎖。不能用不支援 SQLite／flock 語意的網路磁碟，也不能把兩個獨立 data volume 當成同一實例。備份時停止寫入或使用 SQLite backup API，不可只複製活躍的 `.sqlite3` 而漏掉 WAL。
+同一主機部署 web、收件 worker、LINE 專用 line-worker、nginx 及 Redis；web／兩類 worker 必須共用 `./data:/data`，包括 SQLite、來源暫存與跨程序鎖。不能用不支援 SQLite／flock 語意的網路磁碟，也不能把兩個獨立 data volume 當成同一實例。備份時停止寫入或使用 SQLite backup API，不可只複製活躍的 `.sqlite3` 而漏掉 WAL。
 
 ```bash
 cp .env.example .env
@@ -22,7 +22,7 @@ poetry install --only main,dev
 poetry run python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())'
 ```
 
-web 與 worker 使用相同固定 Fernet 金鑰，DEBUG 也不產生臨時金鑰。輪換前先處理完加密事件與 BYOK 工作；遺失舊金鑰就無法解密既有待處理內容。
+web、worker 與 line-worker 使用相同固定 Fernet 金鑰，DEBUG 也不產生臨時金鑰。輪換前先處理完加密事件與 BYOK 工作；遺失舊金鑰就無法解密既有待處理內容。
 
 Compose 只把 nginx 綁在 `127.0.0.1:8080`，請於前方配置 HTTPS reverse proxy／受控 tunnel，並把正式網域加入 `ALLOWED_HOSTS`。Redis 不對主機公開，AOF 每秒同步且使用獨立 volume；最末一秒的佇列在硬故障下仍可能遺失，永久來源紀錄在 SQLite，可依 ID 重試。不要以 `docker compose down -v` 清理正式資料。
 
@@ -33,7 +33,7 @@ Compose 只把 nginx 綁在 `127.0.0.1:8080`，請於前方配置 HTTPS reverse 
 docker compose up -d --build
 ```
 
-映像使用追蹤的 Poetry lock；web 只裝 main，worker 裝 main＋worker，初始化工具與測試不進映像。worker 預設 concurrency 1，STT 模型首次載入會由 faster-whisper 下載至 `/data/models`。離線回歸不下載模型或呼叫真實服務；後續經使用者授權的隔離 UAT 已下載模型，並呼叫真實 Drive、Jev、Gemini 與 LINE 推播，範圍及結果見驗收指南。
+映像使用追蹤的 Poetry lock；web 只裝 main，worker 裝 main＋worker，初始化工具與測試不進映像。Compose 的 worker 只消費 celery 佇列、concurrency 1；line-worker 使用 main-only 映像、不載入 Whisper，以兩個 prefork 程序消費 line-events，減少語音／摘要阻塞指令。兩類 worker 使用同一私人 volume，新增的 LINE 程序需要額外記憶體；Linode 資源仍需實測。未用 Compose 的單一 worker 會宣告兩個佇列，舊 celery 佇列上的任務仍可處理。STT 模型首次載入會由 faster-whisper 下載至 `/data/models`。離線回歸不下載模型或呼叫真實服務；後續經使用者授權的隔離 UAT 已下載模型，並呼叫真實 Drive、Jev、Gemini 與 LINE 推播，範圍及結果見驗收指南。
 
 ## 選擇目的地
 
@@ -44,7 +44,7 @@ docker compose up -d --build
 | `GEMINI_API_KEY` | 文字／語音摘要；Notion 的頁面路由也使用 Gemini |
 | `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_USER_ID` | LINE 推播；可留空關閉通知 |
 | `LINE_CHANNEL_SECRET` | LINE 收件／按鈕／收回驗簽；啟用收件時三項 LINE 設定都填 |
-| `CAPTURE_DATA_DIR` | 容器用 `/data`，兩個程序指向同一私人持久化目錄 |
+| `CAPTURE_DATA_DIR` | 容器用 `/data`，web 與所有 worker 共用同一私人持久化目錄 |
 
 Drive 文字兩檔，語音三檔；圖片／PDF／一般檔案只存一個原檔，不解析、不送模型。Notion 只存全文／逐字稿與摘要；拒收圖片與檔案，不改存 Drive。切換目的地只影響新收件，沒有舊資料搬移。
 
@@ -83,7 +83,7 @@ Drive 文字兩檔，語音三檔；圖片／PDF／一般檔案只存一個原�
 8. 在 Google 登入已加入 Test users 的帳號，核對 app 與權限後同意。不要從聊天連結手動拼接 callback；它必須帶同一瀏覽器的 session。回到無 code 的完成頁後，請回報「已授權」即可，不分享完整 callback 網址。
 9. 可在連線頁重新輸入管理金鑰按「查看連接狀態」；或帶 `X-API-Key` 呼叫 `GET /oauth/google/status`。`connected=true` 才代表 token 與專用私人根目錄已完成。status 不回傳 access／refresh token。
 
-授權後的 refresh token、Google 帳號識別與固定根目錄 ID 以 Fernet 加密保存在共用 SQLite，web／worker 每次操作讀取同一連接；不用手動抄 refresh token，也不用為此重建容器。需要保留同一 `TASK_ENCRYPTION_KEY`、OAuth client 與私人 data volume。只有變更 `.env.uat` 才需 `up -d --force-recreate web worker`。
+授權後的 refresh token、Google 帳號識別與固定根目錄 ID 以 Fernet 加密保存在共用 SQLite，web／worker 每次操作讀取同一連接；不用手動抄 refresh token，也不用為此重建容器。需要保留同一 `TASK_ENCRYPTION_KEY`、OAuth client 與私人 data volume。只有變更 `.env.uat` 才需 `up -d --force-recreate web worker line-worker`。
 
 連接頁使用自託管資源；owner 驗證先於 OAuth JSON body 解析。state 限時且一次性，搭配瀏覽器 HttpOnly cookie 與 PKCE。成功 callback 轉往不含 code 的完成頁；Compose、Dockerfile 及內層 nginx 不記 callback 查詢字串。**Linode 外層 HTTPS proxy、CDN 或 WAF 的 access／error 日誌也必須遮罩或停記 callback query；本機設定不能替代此檢查。**
 
@@ -129,7 +129,7 @@ CAPTURE_CATEGORIES='[{"id":"finance","description":"投資理財"},{"id":"fitnes
 
 若聊天室只有文字、沒有圖片／附件按鈕，優先查看 **Official Account Manager → 設定 → 帳號設定 → 功能使用 → 照片／影片接收**，改為允許接收（選項名稱以介面為準），再退出並重新進入聊天室。官方說明指出，選擇不接收會關閉圖片、影片、語音、聯絡人、位置與檔案的傳送功能；不用因此推論必須開啟人工 Chat 模式。[LINE 官方帳號設定手冊](https://www.lycbiz.com/jp/manual/OfficialAccountManager/account-settings_basic/)
 
-未公開好友連結、QR Code 或關閉搜尋顯示，只能減少被找到的機會。真正的服務權限由 `LINE_USER_ID` 白名單加上 HMAC 驗簽控制；此值是 Messaging API 的 `userId`，不是暱稱或可搜尋 LINE ID。webhook 與 worker 都檢查私聊及同一 userId；不符合的事件不進入收件處理或寫入部署者 Drive，也不觸發模型。這限制的是本服務處理，不能禁止別人在 LINE 平台傳訊或關閉 LINE 自身的自動回應。臨時 gateway 若啟用診斷，仍可能留下事件 ID／種類等 metadata，與原文、附件內容分開。
+未公開好友連結、QR Code 或關閉搜尋顯示，只能減少被找到的機會。真正的服務權限由 `LINE_USER_ID` 白名單加上 HMAC 驗簽控制；此值是 Messaging API 的 `userId`，不是暱稱或可搜尋 LINE ID。webhook 與 LINE worker 都檢查私聊及同一 userId；不符合的事件不進入收件處理或寫入部署者 Drive，也不觸發模型。這限制的是本服務處理，不能禁止別人在 LINE 平台傳訊或關閉 LINE 自身的自動回應。臨時 gateway 若啟用診斷，仍可能留下事件 ID／種類等 metadata，與原文、附件內容分開。
 
 `data-uat/models` 是 UAT worker 的 Whisper 語音辨識模型快取；Docker worker 以 `HF_HOME=/data/models` 持久化下載。本輪 small 模型快取約 466 MiB，後續語音可重用；重新建立快取需網路及下載時間。收件原檔、逐字稿與 SQLite 在 `data-uat/captures`，不要將它們當模型快取刪除。
 
@@ -165,7 +165,7 @@ BYOK 仍限自己的 Notion，透過單一 `X-Voice-Notion-Config` JSON header �
 故障處理：
 
 1. QueueUnavailable：內容先保存在 `/data`；依 `capture_id` 呼叫 retry，不重送產生另一筆 HTTP 收件。
-2. LINE 事件已保存但未排入佇列：webhook 回 503，redelivery 會沿用事件與來源 ID。若 Redis 最末佇列遺失，可由操作者以事件 ID 重排 `app.worker.tasks.process_line_event`；不要把原文或 token 放入 broker。
+2. LINE 事件已保存但未排入佇列：webhook 回 503，redelivery 會沿用事件與來源 ID。若 Redis 最末佇列遺失，可由操作者以事件 ID 重排 `app.worker.tasks.process_line_event`（會送至 line-events；需 line-worker 正在運作）；不要把原文或 token 放入 broker。
 3. Drive 原檔成功、STT／摘要失敗：通知會明確標示未完成；保留原檔與可重用暫存，修正供應商設定後重試。
 4. Notion 寫入回應遺失：依 CID／part marker 查找；找到就復用。新建頁使用含 CID 的唯一頁名恢復。若找不到、區塊移動或外部修改，就維持 failed／delete_pending。先在 Notion 核對，不可清除 pending checkpoint 後盲目重寫。
 5. note metadata 外部編輯衝突：API 的 `metadata_errors`／LINE 會指出未完成來源狀態。保存雲端編輯與私人待傳稿，人工將來源已移除與連結狀態合併至雲端；備份 `/data` 後由操作者調和 DB 的該 note checksum／pending checkpoint 與確認清單狀態。不提供自動覆寫或放寬驗證的管理按鈕。
@@ -188,3 +188,9 @@ poetry check --lock
 測試以暫存目錄、假憑證與 HTTP／SDK 替身執行，不載入私人 `.env`，不呼叫模型、Drive、Notion、LINE。部署後仍須由操作者驗證 OAuth refresh、資料夾授權、Notion 頁面權限、LINE 真實 redelivery／收回與 `/data` 持久化。
 
 官方依據：[Drive scope](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)、[Google Web OAuth](https://developers.google.com/identity/protocols/oauth2/web-server)、[舊 Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[續傳](https://developers.google.com/workspace/drive/api/guides/manage-uploads)、[垃圾桶](https://developers.google.com/workspace/drive/api/guides/delete)、[LINE 簽章](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/)、[LINE 重試](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/)、[Notion block archive](https://developers.notion.com/reference/delete-a-block)。
+
+## LINE 回應與效能
+
+校對、清理預覽與確認會在已驗 owner 的事件處理中，盡力呼叫官方 loading 動畫；此功能只支援符合版本的 iOS／Android，不承諾桌面顯示。動畫請求各階段逾時為 2 秒；被拒絕或逾時仍繼續正式操作，最終結果沿原去重 key 發送。動畫最多 60 秒或下一則 Bot 訊息時消失，不代表工作已完成。[LINE 官方說明](https://developers.line.biz/en/docs/messaging-api/use-loading-indicator/)
+
+Drive 保留內容的一個驗證階段會共用一次新 metadata 與實際內容，仍驗範圍、私人權限、大小、SHA256 及本機 revision；下一階段重新讀取，不跨階段快取。metadata 與下載並非原子快照。查詢縮減、LINE 佇列分流及動畫改善不同等待來源，實際完成仍受網路、CPU、檔案數及 Drive 影響。
