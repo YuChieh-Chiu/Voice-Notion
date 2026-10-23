@@ -4,7 +4,7 @@
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。121 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。130 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **121 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **130 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -32,6 +32,7 @@ poetry check --lock
 | 串接、跨筆批次與隱私 | `test_capture_integration.py` | 路由／DB／處理器串接、跨 owner 拒絕、task 回傳不含原文、Notion 外加子內容保護 |
 | OAuth 初始化工具 | `test_drive_oauth.py` | 官方端點與 desktop client、拒絕混合設定、0600 新檔、不覆寫既有檔 |
 | Web OAuth／共用憑證 | `test_drive_web_oauth.py` | owner 前置驗證、瀏覽器綁定、PKCE、過期／取消／重放、加密、worker 讀取、同帳號／root、pending 恢復與重新授權 |
+| 連線頁／Demo 安全資產 | `test_web_portal.py` | 本地資產、CSP／no-store、原始 HTML 不繞過安全標頭、共享樣式與 script nonce |
 
 只重跑某組：`PYTHONPATH=. poetry run pytest tests/test_deletion_service.py -q`。
 
@@ -105,7 +106,7 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 | Gemini 摘要與額度故障恢復 | 額度恢復後 5 筆完成；內容品質仍需人工校對 | 初始生成診斷回覆 402 RESOURCE_EXHAUSTED／預付額度耗盡，worker status 只記 RuntimeError。操作者更新額度後重試同一 CID 成功，原檔 cloud ID 保持不變、真實目錄恰為 2 檔，另兩主題與兩筆語音亦完成。五筆保留核心金額、時間及否定語意，但有下述品質限制，不代表完整忠實或零幻覺。 |
 | 校對後批次清語音原檔 | 19 項檢查通過，有客戶端等待限制 | 經 HTTP 管理 API 驗證未校對拒絕、校對更新 note、單筆預覽取消及取消 token 拒絕、依 fitness／日期精確選兩筆音檔。批次確認客戶端等候 40 秒後逾時；只讀核對同一預覽的伺服器紀錄為 done／complete，再讀回確認兩音檔在真實垃圾桶、逐字稿未改、摘要與移除註記正確、舊連結撤下。未重做刪除；完成後重試不建回原檔，每筆仍保留文字兩檔。 |
 | 還原設定後的狀態與入口防護 | 15 項檢查通過 | web／worker 重建後授權、五筆完成狀態、兩筆未校對與兩音檔垃圾桶狀態保留；未帶管理 key 的管理／OAuth status 為 401。實際私人設定值未出現於當前容器日誌；此掃描不含已刪除容器的日誌，不等同完整日誌或整站資安稽核。 |
-| LINE 收件／指令／按鈕／收回 | 依使用者要求跳過 | 缺 Channel secret；未設定公開 HTTPS webhook，未更改 Channel 設定。 |
+| LINE 收件／指令／按鈕／收回 | 第二輪依使用者要求跳過 | 當時缺 Channel secret；第三輪已補入並接續下方測試。 |
 | Notion／BYOK、Linode、Mac 同步 | 未驗收 | 未配置專用 Notion 測試權限；本機 UAT 不能替代正式主機與手機端驗收。 |
 
 **摘要品質限制：** 測試操作者與 review_stage_e 獨立核對發現，finance 多加原文沒有的「會議記錄」背景，tech 將「尚未完成實作」強化為「尚未進入程式碼實作」。一般模板允許的補充建議也不是原文。這兩筆維持未校對，不因模型成功就批准原檔清理；只有兩筆已核對一致的語音用於 review／清理驗收。這輪只驗特定測試案例，不能當成模型準確率保證。
@@ -114,7 +115,20 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 
 查找 LINE Channel secret：登入 [LINE Developers Console](https://developers.line.biz/console/)，選 Provider → 這個 **Messaging API Channel** → **Basic settings** → **Channel secret**，需要該 Channel 的 Admin 權限。複製既有值到私人 `.env.uat` 的 `LINE_CHANNEL_SECRET`；不要貼到聊天。單純查找不需按 **Issue**，重新簽發會讓舊 secret 失效。[LINE 官方說明](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/#get-channel-secret)
 
-LINE 收件／指令／按鈕／收回測試需要公開 HTTPS 入口，只轉發到這個測試環境的 8081；把入口的 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`），測試 Channel webhook 設成 `https://測試網域/api/v1/line/webhook`，啟用 webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。純推播不需要公開入口或 Channel secret。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
+第三輪補測（2026-10-23）：操作者補入 Channel secret 後，重新載入獨立 UAT，先區分本機合成事件與 LINE 平台事件，不混合宣稱：
+
+| 範圍 | 已有證據 | 驗收界線 |
+| --- | --- | --- |
+| 本機簽署合成 webhook | 16 項通過 | 使用真 secret，經 nginx／web／Redis／worker／Drive／Gemini；驗未簽章、錯簽、原始 body 變動拒絕，空事件、格式／大小、白名單／群聊、加密待處理事件、同 event 重送與兩檔保存。另一個相同 message ID 的新 event 僅確認 HTTP 接受；未以此單獨證明該新 event 處理完成後去重。 |
+| 本機合成指令／postback／unsend | 14 項通過 | 雲端原文讀回、來源連結、指定 /files、核對摘要後 review、文字原檔捷徑拒絕、只選 note 的清理預覽／取消／取消後拒絕確認／新確認、收回後整筆 tombstone／垃圾桶與防重放。只操作本輪唯一合成 CID／FIDs，不使用寬泛批次。 |
+| 真實 LINE 平台與暫時入口 | 7 項通過 | LINE 官方 webhook test 向指定 HTTPS 入口發送真簽章空事件，得到 200；同時確認未簽章拒絕及 Demo／OAuth／Swagger／管理／health 均不公開。空事件驗證不代表手機訊息、附件或實際按鈕已通過。 |
+| 手機文字／語音／圖片／PDF／一般檔案、點擊按鈕及收回 | 等待實際操作 | 需在 Console 設定測試 webhook URL 並開啟 Use webhook，再私聊傳訊、點擊及收回。附件須以 LINE 平台實際 message ID 下載比對；圖片可能經 LINE 處理，不能假定與相簿原檔相同。 |
+
+暫時入口依操作者選擇建立，只轉發本機 8091 gateway；gateway 只允許正確 HMAC 的 `POST /api/v1/line/webhook`，再以固定 Host localhost 轉送 8081，不公開整個 UAT。gateway 限 1 MiB、最多 8 個連線及 45 分鐘期限，關閉請求 body 日誌及本機 inspector，只將事件 ID／類型等 metadata 寫入私人報告；這是暫時測試入口，不是完整 DoS 防護。手機測試需要本人操作 LINE 與 Console，不能以程式合成事件代替。測試後關閉入口，並停用或清除臨時 Channel webhook，保留原設定紀錄。到期清理若 GET 檢查時已是其他網址則保留；LINE API 沒有原子條件更新，請勿在清理期間同時更改 URL。
+
+第三輪私人證據：`data-uat/line-{local-uat,command-uat,platform-uat,gateway}-20261023.json`；均不提交 Git。review_stage_f 已只讀獨立核對 16／14／7 項證據與 fixture 清理範圍，並指出同 message 新 event 的處理時序限制；手機項目仍保留未驗收。
+
+正式反向代理若直接接 UAT 的 8081，需把公開 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`）；這與本輪只公開 8091 gateway 的暫時方案不同，不要將整個 8081 經臨時 tunnel 公開。測試 Channel webhook 使用 `https://測試網域/api/v1/line/webhook`，在 Console 啟用 Use webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。純推播不需要公開入口或 Channel secret。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 
 **每次修改 `.env.uat` 都要重建容器設定；只用 restart 不會載入新環境變數：**
 
