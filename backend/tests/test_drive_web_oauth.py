@@ -97,9 +97,10 @@ def test_owner_guard_precedes_json_parser_and_blocks_cross_origin(oauth):
     exchange.assert_not_called()
 
 
-def test_portal_uses_local_assets_and_private_responses(oauth):
+@pytest.mark.parametrize("path", ["/oauth/google/setup", "/oauth/google/complete"])
+def test_portal_uses_local_assets_and_private_responses(oauth, path):
     http, _, _, _ = oauth
-    response = http.get("/oauth/google/setup")
+    response = http.get(path)
     assert response.status_code == 200
     assert "cdn." not in response.text and "localStorage" not in response.text
     assert "nonce-" in response.headers["content-security-policy"]

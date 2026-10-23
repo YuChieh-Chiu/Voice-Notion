@@ -161,13 +161,13 @@ def callback(request: Request):
 
 @router.get("/complete", response_class=HTMLResponse)
 def complete():
+    nonce = secrets.token_urlsafe(24)
+    page = (Path(__file__).parent.parent / "static" / "drive_complete.html").read_text()
     return HTMLResponse(
-        '<!doctype html><html lang="zh-Hant"><meta charset="utf-8">'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        "<title>Drive 授權流程</title><h1>Google 授權回覆已處理</h1>"
-        '<p>請回到測試流程，或到<a href="/oauth/google/setup">連線頁</a>確認連接狀態。</p></html>',
+        page.replace("{{nonce}}", nonce),
         headers={
-            "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            "Content-Security-Policy": f"default-src 'none'; style-src 'nonce-{nonce}'; "
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         },
     )
 
