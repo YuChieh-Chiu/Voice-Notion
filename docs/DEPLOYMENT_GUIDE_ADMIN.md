@@ -1,4 +1,4 @@
-# 個人部署與收件操作
+# Note-Goblin 個人部署與收件操作
 
 本版支援 Siri／HTTP／LINE 共用收件，主要目的地選 Google Drive 或 Notion。產品決策見 [實作計畫](MULTI_SOURCE_CAPTURE_PLAN.md)，討論頁的示範選擇不會修改服務設定。
 
@@ -122,6 +122,16 @@ CAPTURE_CATEGORIES='[{"id":"finance","description":"投資理財"},{"id":"fitnes
 ## LINE 收件、校對與清理
 
 將 webhook 設為 `https://你的網域/api/v1/line/webhook`，啟用 webhook 與 redelivery，關閉會造成重複回覆的預設自動回應。Channel secret 用於原始 body HMAC 驗簽；只有設定的 `LINE_USER_ID` 私聊會處理，群組與其他使用者忽略。文字、語音、圖片與檔案使用固定官方內容端點，拒絕外部內容提供者與跳轉。
+
+建議同時開啟 **Webhook redelivery** 與 **Error statistics aggregation**：前者在接收失敗時重送，後者記錄錯誤原因及統計；不保證每次都能重送，也不會補回開啟統計以前的紀錄。[LINE 重送](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)、[錯誤統計](https://developers.line.biz/en/docs/messaging-api/check-webhook-error-statistics/)
+
+若聊天室出現「本帳號無法個別回覆」等預設訊息，到 **LINE Official Account Manager → 設定 → 回應設定** 關閉自動回應訊息，保留 Webhook。這是 LINE 的另一套自動回應，與本服務的保存完成通知分開設定。[LINE 官方說明](https://developers.line.biz/en/docs/messaging-api/building-bot/)
+
+若聊天室只有文字、沒有圖片／附件按鈕，優先查看 **Official Account Manager → 設定 → 帳號設定 → 功能使用 → 照片／影片接收**，改為允許接收（選項名稱以介面為準），再退出並重新進入聊天室。官方說明指出，選擇不接收會關閉圖片、影片、語音、聯絡人、位置與檔案的傳送功能；不用因此推論必須開啟人工 Chat 模式。[LINE 官方帳號設定手冊](https://www.lycbiz.com/jp/manual/OfficialAccountManager/account-settings_basic/)
+
+未公開好友連結、QR Code 或關閉搜尋顯示，只能減少被找到的機會。真正的服務權限由 `LINE_USER_ID` 白名單加上 HMAC 驗簽控制；此值是 Messaging API 的 `userId`，不是暱稱或可搜尋 LINE ID。webhook 與 worker 都檢查私聊及同一 userId；不符合的事件不進入收件處理或寫入部署者 Drive，也不觸發模型。這限制的是本服務處理，不能禁止別人在 LINE 平台傳訊或關閉 LINE 自身的自動回應。臨時 gateway 若啟用診斷，仍可能留下事件 ID／種類等 metadata，與原文、附件內容分開。
+
+`data-uat/models` 是 UAT worker 的 Whisper 語音辨識模型快取；Docker worker 以 `HF_HOME=/data/models` 持久化下載。本輪 small 模型快取約 466 MiB，後續語音可重用；重新建立快取需網路及下載時間。收件原檔、逐字稿與 SQLite 在 `data-uat/captures`，不要將它們當模型快取刪除。
 
 | 指令 | 行為 |
 | --- | --- |

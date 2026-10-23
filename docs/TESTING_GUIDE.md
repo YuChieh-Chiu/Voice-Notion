@@ -4,7 +4,7 @@
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。130 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。135 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **130 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **135 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -127,6 +127,12 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 暫時入口依操作者選擇建立，只轉發本機 8091 gateway；gateway 只允許正確 HMAC 的 `POST /api/v1/line/webhook`，再以固定 Host localhost 轉送 8081，不公開整個 UAT。gateway 限 1 MiB、最多 8 個連線及 45 分鐘期限，關閉請求 body 日誌及本機 inspector，只將事件 ID／類型等 metadata 寫入私人報告；這是暫時測試入口，不是完整 DoS 防護。手機測試需要本人操作 LINE 與 Console，不能以程式合成事件代替。測試後關閉入口，並停用或清除臨時 Channel webhook，保留原設定紀錄。到期清理若 GET 檢查時已是其他網址則保留；LINE API 沒有原子條件更新，請勿在清理期間同時更改 URL。
 
 第三輪私人證據：`data-uat/line-{local-uat,command-uat,platform-uat,gateway}-20261023.json`；均不提交 Git。review_stage_f 已只讀獨立核對 16／14／7 項證據與 fixture 清理範圍，並指出同 message 新 event 的處理時序限制；手機項目仍保留未驗收。
+
+第四輪真實 LINE 私聊補驗（2026-10-23）：操作者開啟 Use webhook，傳入一筆文字及 PDF、TXT、JPG；平台未提供傳送端裝置類型，故只稱真實 LINE 私聊，不推論已測某個手機版本。四筆均完成，17 項雲端讀回檢查通過：文字兩檔，三個附件各只有一份原檔；附件以本輪真實 message ID 再向 LINE 內容 API 下載，與 Drive 原檔 SHA256 完全相同，且檔案權限為私人。附件按鈕缺少先以官方照片／影片接收設定排查，後續已觀察到 image／file 事件及保存成功；官方帳號自動回應與保存通知須分別設定。語音、實際點擊管理按鈕及真人收回仍待另驗。
+
+另對這筆已保存的真實文字，以**本機合成的新 event** 重送相同 message ID；明確等待該 event worker complete，再核對同 CID、FID、cloud ID、SHA 均不變，目錄仍恰為兩檔，4 項去重檢查通過。這補足第三輪時序缺口，仍不宣稱已觀察 LINE 平台真正 redelivery。此輪不替使用者標記 review，也未刪除傳入附件。詳細私人證據在 `data-uat/line-phone-uat-<session>.json`，不公開原文、實際 ID 或臨時 URL。
+
+臨時入口原本到期清除 URL 的請求實際收到 LINE 400，未假報已還原；本輪重開改為只在期限到時關閉精確同一 tunnel，Channel URL／Use webhook 仍由操作者在 Console 清理。應確認程序確實退出，不能將「已要求停止」當成退出證明。
 
 正式反向代理若直接接 UAT 的 8081，需把公開 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`）；這與本輪只公開 8091 gateway 的暫時方案不同，不要將整個 8081 經臨時 tunnel 公開。測試 Channel webhook 使用 `https://測試網域/api/v1/line/webhook`，在 Console 啟用 Use webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。純推播不需要公開入口或 Channel secret。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 

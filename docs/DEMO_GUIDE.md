@@ -1,4 +1,4 @@
-# 🌈 Voice-Notion 快速試用指南 (Demo Guide)
+# Note-Goblin 快速試用指南 (Demo Guide)
 
 Demo 頁用自己的 Gemini／Notion 金鑰產生 Siri 捷徑設定，目的地為自己的 Notion。使用可信任的已部署服務即可免自架；Google Drive 個人部署請走 [管理者授權流程](DEPLOYMENT_GUIDE_ADMIN.md#drive-web-oauth從-google-console-到可測試)。
 

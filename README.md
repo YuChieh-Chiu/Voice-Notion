@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="assets/voice-notion-logo.png" alt="Voice-Notion Logo" width="200">
+  <img src="backend/app/static/img/logo.svg" alt="Note-Goblin Logo" width="96">
   
-  # Voice-Notion 語音筆記助理
+  <h1>Note-Goblin</h1>
   
   **Siri／LINE 收件，保存完整原文與摘要至 Google Drive 或 Notion**
   
@@ -15,7 +15,7 @@
 
 ---
 
-**Voice-Notion** 是一個語音筆記自動化系統 (AI Voice Note Automation)，讓你透過 **Siri 語音指令**快速記錄想法，並自動使用 AI 整理成結構化的 **Notion 筆記**。支援會議紀錄、待辦事項、靈感記錄等多種預設筆記類型，完全可自行部署（Self-Hosted）以保護隱私。
+**Note-Goblin**（原 Voice-Notion）透過 Siri、HTTP 與 LINE 收件，將完整原文、語音逐字稿與摘要保存到 Google Drive 或 Notion。Drive 也可保存圖片、PDF 與一般檔案原檔；你可自行部署，控制收件帳號、保存位置及清理方式。
 
 **核心技術 (Tech Stack)**：FastAPI、Celery、Faster-Whisper (STT)、Google Gemini (LLM)、Notion API、Docker
 
