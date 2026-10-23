@@ -1,10 +1,10 @@
 # 逐項測試與驗收指南
 
-2026-10-23；包含 `964b1a1` 收件基準與後續 Web OAuth 擴充。本指南對應 [已確認計畫](MULTI_SOURCE_CAPTURE_PLAN.md)，從 Google Console 到授權的完整步驟見 [部署指南](DEPLOYMENT_GUIDE_ADMIN.md#drive-web-oauth從-google-console-到可測試)。
+2026-10-23；包含 `964b1a1` 收件基準與後續 Web OAuth、LINE 指令及回覆格式擴充。本指南對應 [已確認計畫](MULTI_SOURCE_CAPTURE_PLAN.md)，從 Google Console 到授權的完整步驟見 [部署指南](DEPLOYMENT_GUIDE_ADMIN.md#drive-web-oauth從-google-console-到可測試)。
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。135 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。201 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **135 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **201 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ poetry check --lock
 | Drive 精簡檔案與範圍 | `test_drive_storage.py` | 2／3／1 檔、原始位元組、固定 ID、私人根目錄與移出範圍拒絕 |
 | 真實 SDK 續傳流程 | `test_drive_resumption.py` | 離線 transport 模擬首塊／最後回應遺失、server Range、404／410 |
 | 分類、摘要與 STT 介面 | `test_topic_router.py`、`test_llm_service.py`、`test_stt_service.py` | 主題允許清單、供應商失敗、模型參數；不證明實際分類或轉錄正確率 |
-| LINE 收件與通知 | `test_line_ingestion.py` | 原始簽章、私聊白名單、有限下載、重送與推播去重 |
+| LINE 收件與通知 | `test_line_ingestion.py`、`test_line_messages.py` | 原始簽章、私聊白名單、有限下載、重送、推播去重、指令別名／探索、統一格式、目的地提示及清理訊息完整性 |
 | 清理與收回 | `test_deletion_service.py` | 校對、確認、取消／過期、部分失敗、保留全文 guard、刪除競態與 Notion 區塊範圍 |
 | 串接、跨筆批次與隱私 | `test_capture_integration.py` | 路由／DB／處理器串接、跨 owner 拒絕、task 回傳不含原文、Notion 外加子內容保護 |
 | OAuth 初始化工具 | `test_drive_oauth.py` | 官方端點與 desktop client、拒絕混合設定、0600 新檔、不覆寫既有檔 |
@@ -38,7 +38,7 @@ poetry check --lock
 
 ## 2. 建立獨立的真實驗收環境
 
-這一層由操作者填入測試憑證後執行，會呼叫模型與雲端服務、使用帳號額度。本次文件補充不會替你啟動服務或送出測試內容。
+這一層由操作者填入測試憑證後執行，會呼叫模型與雲端服務、使用帳號額度。先配置專用測試帳號與資料範圍；實際 UAT 紀錄另列於下，不以操作步驟當作通過證據。
 
 使用 repo 根目錄的 [docker-compose.uat.yml](../docker-compose.uat.yml)：
 
@@ -130,9 +130,19 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 
 第四輪真實 LINE 私聊補驗（2026-10-23）：操作者開啟 Use webhook，傳入一筆文字及 PDF、TXT、JPG；平台未提供傳送端裝置類型，故只稱真實 LINE 私聊，不推論已測某個手機版本。四筆均完成，17 項雲端讀回檢查通過：文字兩檔，三個附件各只有一份原檔；附件以本輪真實 message ID 再向 LINE 內容 API 下載，與 Drive 原檔 SHA256 完全相同，且檔案權限為私人。附件按鈕缺少先以官方照片／影片接收設定排查，後續已觀察到 image／file 事件及保存成功；官方帳號自動回應與保存通知須分別設定。語音、實際點擊管理按鈕及真人收回仍待另驗。
 
+後續收到一筆真實 LINE 語音，完整經過 LINE 下載、Whisper、Gemini 及 Drive 三檔保存；加計語音原音／逐字稿／筆記 SHA、來源連結及私人權限，本輪共五筆、25 項讀回檢查通過。人工核對發現該筆摘要新增另一個工作計畫，因此**語音內容品質尚未通過**，當時未校對並保留原音，不以三檔 complete 取代語意驗收。後續修正通用與共用摘要提示，四個指定案例以真實 Gemini 人工核對通過（單一跑步計畫、理財預算及未下單、局部完成但整體未完成、引用指令），不能保證零幻覺或全面防注入。舊筆記不自動覆寫；更新部署後需新收件再驗。稍後操作者自行對舊語音點擊校對，這是人工狀態更新，不代表舊摘要已重寫或新版摘要已驗收。
+
 另對這筆已保存的真實文字，以**本機合成的新 event** 重送相同 message ID；明確等待該 event worker complete，再核對同 CID、FID、cloud ID、SHA 均不變，目錄仍恰為兩檔，4 項去重檢查通過。這補足第三輪時序缺口，仍不宣稱已觀察 LINE 平台真正 redelivery。此輪不替使用者標記 review，也未刪除傳入附件。詳細私人證據在 `data-uat/line-phone-uat-<session>.json`，不公開原文、實際 ID 或臨時 URL。
 
 臨時入口原本到期清除 URL 的請求實際收到 LINE 400，未假報已還原；本輪重開改為只在期限到時關閉精確同一 tunnel，Channel URL／Use webhook 仍由操作者在 Console 清理。應確認程序確實退出，不能將「已要求停止」當成退出證明。
+
+指令與格式更新部署後，187 項離線測試通過；web／worker 的回覆模組及兩份摘要提示 SHA 與已審查來源相同。另執行一次**本機簽署的合成 `/file` 指令**查詢既有 UAT 語音，9 項檢查通過：真實 HTTP／worker 完成且 LINE 推播 API 接受、新格式有完整 CID／三個 FID／角色且未截斷、查詢前後 capture 與檔案狀態不變、公開管理頁仍 404、LINE 平台真簽章空事件成功。這不是操作者送出指令或確認手機送達，也沒有標記校對、清理或重寫舊摘要；私人證據為 `data-uat/line-format-uat-20261023.json`。
+
+稍後真實 owner 私聊已觀察到新版 `/file` 回覆、校對／原音預覽／確認按鈕事件；確認清理被保留檔案 guard 拒絕。只讀核對顯示筆記 Drive version 3→4，其餘 metadata、本機 revision 與內容 SHA256 均相同，逐字稿也一致；原音未進垃圾桶，預覽仍 pending。Drive version 包含不可見的伺服器變動，不能單獨作內容變更證據；參見 [Google files.version 定義](https://developers.google.com/workspace/drive/api/reference/rest/v3/files)。私人診斷為 `data-uat/line-retained-conflict-20261023.json`。
+
+保留文字 guard 已改成逐次讀回 SHA256，容許其餘 metadata 不變且內容一致時的單獨 version 漂移；201 項回歸與獨立程式審查通過。部署後以該真實清單資料只呼叫保留內容驗證，6 項檢查通過：實際版本漂移案例驗證成功，capture／files／整個 preview 紀錄及原音雲端快照皆未改動，原音未進垃圾桶。這**沒有執行 confirm、檢查 token 期限或驗收原音清理成功**；重新預覽並由本人確認仍待驗。私人證據為 `data-uat/line-retained-guard-uat-20261023.json`；待刪原檔完整版本防護、權限與其他快照仍有效。
+
+本輪真人收回依操作者選擇**跳過、未驗收**，不要求再測，也不推論所有 LINE 免費帳號的功能；既有合成及離線撤下證據保持原範圍。新語音語意、取消與重新確認清原音、附件整筆清理仍需對應證據。
 
 正式反向代理若直接接 UAT 的 8081，需把公開 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`）；這與本輪只公開 8091 gateway 的暫時方案不同，不要將整個 8081 經臨時 tunnel 公開。測試 Channel webhook 使用 `https://測試網域/api/v1/line/webhook`，在 Console 啟用 Use webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。純推播不需要公開入口或 Channel secret。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 
@@ -143,6 +153,8 @@ vn_uat up -d --force-recreate web worker
 ```
 
 ## 3. 第一次驗收：先完成一筆，再做清理
+
+先傳 `/help` 或將 `/` **送出**，應看到指令說明；只在 LINE 原生輸入框打 `/` 尚未送出，不會出現 Bot 自訂自動完成選單。`/file C代號` 與 `/files C代號` 等價；未知指令或缺參數應回覆短用法，不把它另存為筆記。[LINE 收件事件](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 
 1. 打開 `http://localhost:8081/docs`，展開 `POST /api/v1/captures/text`，按 **Try it out**，填測試的 `X-API-Key`。送出下列 JSON：
 
@@ -156,11 +168,21 @@ vn_uat up -d --force-recreate web worker
 2. 收到 `202` 後記下真正的 `capture_id`（`C` 開頭）與 `task_id`；本指南的 `C…`／`F…` 都要換成實際代號。
 3. 在 Swagger 的 `GET /api/v1/captures/{capture_id}` 填相同金鑰查詢。等 `capture.status=complete`，兩個 `files[].state=uploaded`。
 4. 到 Drive 找 `<UAT根目錄>/finance/<UTC年月>/<C代號>/`，應只有 `original.txt`、`note.md`。前者與輸入原文一致；後者有摘要、來源 ID、作者未確認與你提供的來源 URL。網址只是 metadata，不抓網頁內容。
-5. LINE 應收到「完整原文與摘要已保存」，附同一個 C 代號與私人連結。確認摘要沒有把「還沒買」改成「已買」。
+5. LINE 應收到「Note-Goblin｜保存完成」，狀態為原文與摘要已保存、尚未人工校對，附同一個 C 代號與私人連結。通知的「標題」不是摘要；到目的地閱讀內容，確認沒有把「還沒買」改成「已買」。
 6. LINE 輸入 `/files C代號`。先用這筆文字測 `/clear C代號 all`，檢查預覽後按 **取消**，Drive 內容應仍存在。
 7. 再送一段短語音，確認有原音檔、完整逐字稿與摘要三檔。人工作完校對後輸入 `/review C語音代號` → `/clear C語音代號 original` → 確認。應只把音檔移至垃圾桶，留下兩個文字檔。
 
 完成這七步代表你已走過「收件 → 保存 → 通知 → 查詢 → 取消 → 校對 → 確認清原檔」。**還沒有驗收下面的故障、去重、權限與 Notion 相容行為。**
+
+回覆格式驗收：
+
+- 保存通知、`/files`、校對、清理、取消／收回、錯誤與 help 都以 Note-Goblin 事件名稱開頭，分開顯示狀態與下一步；有紀錄才列 C 開頭的紀錄 ID，檔案列 F 開頭的檔案 ID。
+- 文字／語音的標題不標成摘要；圖片、PDF、一般附件明說僅原檔、未解析，不提供校對捷徑。
+- `/files` 各檔列類型、bytes、狀態及適用私人連結；已移除／清理中的內容不顯示舊連結。查詢不修改狀態。
+- 清理預覽包含全部 CID／FID、類型、bytes、總大小、範圍、UTC 到期時間及警告，尚未確認不清檔；文字 `/confirm`／`/cancel` 與按鈕使用同一代號。過長清單整份取消，不能裁切警告或漏掉檔案再確認。
+- LINE 預覽超過 4400 字或 45 檔會先取消；HTTP 管理 API 建立超過 45 檔的 token 拿到 LINE 確認，本次 LINE 呼叫應拒絕且不改動原清單／檔案，指引改由管理 API 完成操作或查看完整結果。即使 token 已在 HTTP 處理中或完成也不送出被截斷的清單；不宣稱整批尚未執行。HTTP 原設定的批次上限不變。
+- iOS／Android 可檢查 Quick reply；LINE 桌面版用預覽列出的文字指令。新訊息可能使原按鈕消失，可重新 `/files` 查看適用操作；未部署 Rich menu。[LINE Quick reply](https://developers.line.biz/en/docs/messaging-api/using-quick-reply/)
+- Notion 不顯示 Drive 同步提醒；BYOK 通知不顯示部署者的管理指令。這兩項目前只有離線替身驗證，真實 Notion 尚未配置。
 
 ## 4. Drive 與各入口逐項驗收
 
@@ -180,7 +202,7 @@ vn_uat up -d --force-recreate web worker
 | [ ] D10 私人範圍 | 查 Drive 分享狀態、目錄與 `/files` 連結 | 未自動建立公開分享；每筆在設定的 UAT 根目錄內，沒有寫入正式 raw |
 | [ ] D11 雲端與本機同步 | 先在 Drive 網頁確認，再在 Mac 同步目錄確認 | 分別記錄雲端完成及 Mac 可讀時間；通知不當成 Mac 同步證明 |
 
-若語音轉錄不正確，先把 D05 記為失敗，不按「確認全文與摘要正確」。本版沒有線上逐字稿編輯流程；直接在 Drive 改檔後，原檔捷徑會因 SHA／版本不同停止，不能把 `/review` 當成自動調和外部編輯的工具。
+若語音轉錄不正確，先把 D05 記為失敗，不按「確認全文與摘要正確」。本版沒有線上逐字稿編輯流程；直接在 Drive 修改保留文字的實際內容後，原檔捷徑仍會因 SHA256 不符停止，不能把 `/review` 當成自動調和外部編輯的工具。只有 Drive version 改變、其餘 metadata／本機 revision／實際內容雜湊都相同時可繼續；待刪檔案仍核對包含 version 的完整快照。
 
 Siri 的原始二進位上傳可用以下指令；使用自己的測試金鑰與路徑，不要把真實金鑰貼入驗收報告：
 

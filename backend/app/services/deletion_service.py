@@ -296,10 +296,16 @@ class DeletionService:
             if original.state in ("trashed", "missing"):
                 continue
             retained = self.repository.file(guard["id"])
+            if retained.state != "uploaded" or retained.revision != guard["revision"]:
+                raise DeletionConflict("保留原文或摘要已變更，請重新確認後預覽")
+            remote = self._remote_snapshot(retained)
+            # Drive version 也包含不可見的伺服器 metadata 變動；實際內容另以 SHA256 核對。
             if (
-                retained.state != "uploaded"
-                or retained.revision != guard["revision"]
-                or self._remote_snapshot(retained) != guard["remote"]
+                not isinstance(remote, dict)
+                or {key: value for key, value in remote.items() if key != "version"}
+                != {key: value for key, value in guard["remote"].items() if key != "version"}
+                or hashlib.sha256(self.storage.read_cloud_file(retained)).hexdigest()
+                != retained.sha256
             ):
                 raise DeletionConflict("保留原文或摘要已變更，請重新確認後預覽")
 

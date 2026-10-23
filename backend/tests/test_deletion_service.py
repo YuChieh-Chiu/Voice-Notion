@@ -552,6 +552,119 @@ def test_original_shortcut_requires_retained_fulltext_to_stay_valid(setup, when)
     assert not fake.entries[files["original"].cloud_id]["trashed"]
 
 
+@pytest.mark.parametrize("when", ["before_confirm", "after_intent"])
+def test_retained_note_version_only_drift_allows_original_cleanup(setup, when):
+    repository, _, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    files = {file.role: file for file in repository.files(record.id)}
+    note = files["note"]
+    fake.entries[note.cloud_id]["version"] = "3"
+    preview = service.preview("original", capture_id=record.id)
+    if when == "before_confirm":
+        fake.entries[note.cloud_id]["version"] = "4"
+    else:
+        execute = service._execute
+
+        def drift_during_wait(data):
+            assert repository.file(files["original"].id).state == "trash_pending"
+            fake.entries[note.cloud_id]["version"] = "4"
+            return execute(data)
+
+        service._execute = drift_during_wait
+    assert service.confirm(preview["token"])["complete"]
+    assert fake.entries[files["original"].cloud_id]["trashed"]
+    assert not fake.entries[files["transcript"].cloud_id]["trashed"]
+    assert not fake.entries[note.cloud_id]["trashed"]
+
+
+@pytest.mark.parametrize("when", ["before_confirm", "after_intent"])
+def test_retained_bytes_are_rechecked_even_when_all_metadata_matches(setup, when):
+    repository, _, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    files = {file.role: file for file in repository.files(record.id)}
+    note = files["note"]
+    preview = service.preview("original", capture_id=record.id)
+    metadata = copy.deepcopy(fake.entries[note.cloud_id])
+    if when == "before_confirm":
+        fake.content[note.cloud_id] = b"changed bytes with stale server metadata"
+    else:
+        execute = service._execute
+
+        def change_during_wait(data):
+            fake.content[note.cloud_id] = b"changed bytes with stale server metadata"
+            return execute(data)
+
+        service._execute = change_during_wait
+    with pytest.raises(DeletionConflict):
+        service.confirm(preview["token"])
+    assert fake.entries[note.cloud_id] == metadata
+    assert not fake.entries[files["original"].cloud_id]["trashed"]
+    assert repository.file(files["original"].id).state == "uploaded"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "missing",
+        "trashed",
+        "moved",
+        "public",
+        "revision",
+        "local_state",
+        "size",
+        "checksum",
+        "identity",
+    ],
+)
+def test_retained_guard_keeps_scope_privacy_local_and_other_metadata_checks(setup, change):
+    repository, _, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    files = {file.role: file for file in repository.files(record.id)}
+    note = files["note"]
+    preview = service.preview("original", capture_id=record.id)
+    metadata = fake.entries[note.cloud_id]
+    metadata["version"] = "metadata-drift"
+    if change == "missing":
+        del fake.entries[note.cloud_id]
+    elif change == "trashed":
+        metadata["trashed"] = True
+    elif change == "moved":
+        metadata["parents"] = ["other-folder"]
+    elif change == "public":
+        metadata["permissions"] = [{"type": "anyone"}]
+    elif change == "revision":
+        repository.update_file(note.id, cloud_url=note.cloud_url)
+    elif change == "local_state":
+        repository.update_file(note.id, state="trash_pending")
+    elif change == "size":
+        metadata["size"] = str(int(metadata["size"]) + 1)
+    elif change == "checksum":
+        metadata["md5Checksum"] = "0" * 32
+    else:
+        metadata["id"] = "different-file"
+    with pytest.raises(ValueError):
+        service.confirm(preview["token"])
+    assert not fake.entries[files["original"].cloud_id]["trashed"]
+    assert repository.file(files["original"].id).state == "uploaded"
+
+
+def test_selected_original_still_rejects_version_only_drift(setup):
+    repository, _, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    original = next(file for file in repository.files(record.id) if file.role == "original")
+    fake.entries[original.cloud_id]["version"] = "3"
+    preview = service.preview("original", capture_id=record.id)
+    fake.entries[original.cloud_id]["version"] = "4"
+    with pytest.raises(DeletionConflict, match="Drive 檔案已變更"):
+        service.confirm(preview["token"])
+    assert repository.file(original.id).state == "uploaded"
+    assert not fake.entries[original.cloud_id]["trashed"]
+
+
 def test_reviewed_batch_retry_ignores_metadata_updated_by_its_completed_items(setup):
     repository, _, fake, _, service = setup
     first, _ = make_capture(setup)
