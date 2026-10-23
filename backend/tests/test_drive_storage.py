@@ -41,6 +41,22 @@ def test_upload_reuses_cloud_id_and_preserves_received_bytes(drive_setup):
     assert reopened.instance_id == storage.instance_id
 
 
+def test_content_and_metadata_read_is_fresh_and_rejects_later_public_access(drive_setup):
+    repository, _, fake, storage = drive_setup
+    record = create(repository)
+    file = storage.upload(repository.files(record.id)[0])
+    fake.entries[file.cloud_id]["version"] = "1"
+    first_metadata, first_content = storage.read_cloud_file_with_metadata(file)
+    assert first_metadata["version"] == "1" and first_content == b"complete source"
+    fake.entries[file.cloud_id]["version"] = "2"
+    second_metadata, second_content = storage.read_cloud_file_with_metadata(file)
+    assert second_metadata["version"] == "2" and second_content == first_content
+    assert first_metadata["version"] == "1"
+    fake.entries[file.cloud_id]["permissions"] = [{"type": "anyone"}]
+    with pytest.raises(ValueError, match="privately"):
+        storage.read_cloud_file_with_metadata(file)
+
+
 def test_interrupted_upload_resumes_same_file_and_offset(drive_setup):
     repository, _, fake, storage = drive_setup
     record = create(repository)

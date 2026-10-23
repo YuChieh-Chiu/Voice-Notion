@@ -104,14 +104,7 @@ class DeletionService:
             if scope in ("original", "reviewed"):
                 for retained in files:
                     if retained.role in ("transcript", "note"):
-                        remote = self._remote_snapshot(retained)
-                        if not remote or remote.get("missing") or remote.get("trashed"):
-                            raise DeletionConflict("保留原文或摘要已不可用，不能清理原檔")
-                        if (
-                            hashlib.sha256(self.storage.read_cloud_file(retained)).hexdigest()
-                            != retained.sha256
-                        ):
-                            raise DeletionConflict("已校對內容在外部變更，請人工確認")
+                        remote = self._retained_snapshot(retained)
                         guards.append(
                             {
                                 "id": retained.id,
@@ -182,10 +175,23 @@ class DeletionService:
         self.storage.verify_file(file, metadata)
         if not metadata.get("trashed"):
             self.storage.assert_private(metadata)
+        return self._snapshot_metadata(metadata)
+
+    @staticmethod
+    def _snapshot_metadata(metadata):
         return {
             key: metadata.get(key)
             for key in ("id", "version", "size", "md5Checksum", "trashed", "parents")
         }
+
+    def _retained_snapshot(self, file):
+        try:
+            metadata, content = self.storage.read_cloud_file_with_metadata(file)
+        except ValueError as exc:
+            raise DeletionConflict("保留原文或摘要已不可用，請重新確認後預覽") from exc
+        if hashlib.sha256(content).hexdigest() != file.sha256:
+            raise DeletionConflict("保留原文或摘要已變更，請重新確認後預覽")
+        return self._snapshot_metadata(metadata)
 
     @staticmethod
     def _token_hash(token):
@@ -298,14 +304,12 @@ class DeletionService:
             retained = self.repository.file(guard["id"])
             if retained.state != "uploaded" or retained.revision != guard["revision"]:
                 raise DeletionConflict("保留原文或摘要已變更，請重新確認後預覽")
-            remote = self._remote_snapshot(retained)
+            remote = self._retained_snapshot(retained)
             # Drive version 也包含不可見的伺服器 metadata 變動；實際內容另以 SHA256 核對。
             if (
                 not isinstance(remote, dict)
                 or {key: value for key, value in remote.items() if key != "version"}
                 != {key: value for key, value in guard["remote"].items() if key != "version"}
-                or hashlib.sha256(self.storage.read_cloud_file(retained)).hexdigest()
-                != retained.sha256
             ):
                 raise DeletionConflict("保留原文或摘要已變更，請重新確認後預覽")
 

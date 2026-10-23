@@ -1,4 +1,5 @@
 import copy
+import json
 import threading
 from unittest.mock import MagicMock
 
@@ -702,6 +703,68 @@ def create_local_cleanup_files(repository, count):
         )
         file_ids.append(repository.files(record.id)[0].id)
     return file_ids
+
+
+def test_retained_snapshot_and_content_share_one_fresh_metadata_read(setup, monkeypatch):
+    repository, _, _, storage, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    metadata = MagicMock(wraps=storage.metadata)
+    monkeypatch.setattr(storage, "metadata", metadata)
+    preview = service.preview("original", capture_id=record.id)
+    retained = [f for f in repository.files(record.id) if f.role in ("note", "transcript")]
+    for file in retained:
+        assert sum(call.args == (file.cloud_id,) for call in metadata.call_args_list) == 1
+    data = json.loads(service._load(preview["token"], "owner")["data"])
+    for _ in range(2):
+        metadata.reset_mock()
+        service.validate_retained(data)
+        for file in retained:
+            assert sum(call.args == (file.cloud_id,) for call in metadata.call_args_list) == 1
+
+
+def test_retained_privacy_change_after_intent_cancels_without_trashing(setup, monkeypatch):
+    repository, _, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    files = {file.role: file for file in repository.files(record.id)}
+    preview = service.preview("original", capture_id=record.id)
+    execute = service._execute
+
+    def make_public_after_intent(data):
+        assert repository.file(files["original"].id).state == "trash_pending"
+        fake.entries[files["note"].cloud_id]["permissions"] = [{"type": "anyone"}]
+        return execute(data)
+
+    monkeypatch.setattr(service, "_execute", make_public_after_intent)
+    with pytest.raises(DeletionConflict):
+        service.confirm(preview["token"])
+    assert repository.file(files["original"].id).state == "uploaded"
+    assert not fake.entries[files["original"].cloud_id]["trashed"]
+    assert service._load(preview["token"], "owner")["status"] == "cancelled"
+
+
+def test_retained_network_timeout_after_intent_remains_retryable(setup, monkeypatch):
+    repository, _, fake, storage, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    original = next(f for f in repository.files(record.id) if f.role == "original")
+    preview = service.preview("original", capture_id=record.id)
+    read = storage.read_cloud_file_with_metadata
+    failures = [True]
+
+    def fail_after_intent(file):
+        if repository.file(original.id).state == "trash_pending" and failures:
+            failures.pop()
+            raise TimeoutError("temporary network failure")
+        return read(file)
+
+    monkeypatch.setattr(storage, "read_cloud_file_with_metadata", fail_after_intent)
+    with pytest.raises(TimeoutError):
+        service.confirm(preview["token"])
+    assert service._load(preview["token"], "owner")["status"] == "running"
+    assert not fake.entries[original.cloud_id]["trashed"]
+    assert service.confirm(preview["token"])["complete"]
 
 
 @pytest.mark.parametrize("status", ["pending", "running", "done"])

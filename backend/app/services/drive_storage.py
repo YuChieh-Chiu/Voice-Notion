@@ -322,6 +322,10 @@ class DriveStorage:
         return self.repository.file(file.id)
 
     def read_cloud_file(self, file: CaptureFile) -> bytes:
+        return self.read_cloud_file_with_metadata(file)[1]
+
+    def read_cloud_file_with_metadata(self, file: CaptureFile) -> tuple[dict, bytes]:
+        """同一次受限讀取提供 metadata 與內容，不重用其他讀取的快照。"""
         metadata = self.metadata(file.cloud_id)
         if metadata is None or metadata.get("trashed"):
             raise ValueError("Drive file is missing or trashed")
@@ -329,4 +333,5 @@ class DriveStorage:
         self.assert_private(metadata)
         if int(metadata.get("size", 0)) > self.settings.CAPTURE_MAX_BYTES:
             raise ValueError("Remote file exceeds the capture limit")
-        return self.service.files().get_media(fileId=file.cloud_id).execute(num_retries=2)
+        content = self.service.files().get_media(fileId=file.cloud_id).execute(num_retries=2)
+        return metadata, content
