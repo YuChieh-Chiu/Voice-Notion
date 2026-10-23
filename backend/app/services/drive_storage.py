@@ -18,6 +18,7 @@ from googleapiclient.http import MediaIoBaseUpload
 from app.config import Settings
 from app.schemas.capture import CaptureFile
 from app.services.capture_repository import CaptureRepository
+from app.services.drive_oauth import DriveOAuth
 
 DRIVE_FOLDER_MIME = "application/vnd.google-apps.folder"
 DRIVE_METADATA_FIELDS = (
@@ -28,6 +29,8 @@ UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024  # Drive 分塊須為 256 KiB 的倍數。
 
 class DriveStorage:
     def __init__(self, repository: CaptureRepository, settings: Settings, service=None):
+        if service is None and not settings.DRIVE_FOLDER_ID:
+            settings = DriveOAuth(repository, settings).worker_settings()
         self.repository, self.settings = repository, settings
         if not settings.DRIVE_FOLDER_ID:
             raise ValueError("DRIVE_FOLDER_ID is required")

@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.core.request_limits import RequestBodyLimitMiddleware
-from app.routes import capture_management, line_webhook, voice_note
+from app.routes import capture_management, drive_oauth, line_webhook, voice_note
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -57,11 +57,17 @@ app.add_middleware(
 
 # multipart framing 額外保留 64 KiB；檔案實際內容另以 CAPTURE_MAX_BYTES 驗證。
 app.add_middleware(RequestBodyLimitMiddleware, max_bytes=settings.CAPTURE_MAX_BYTES + 64 * 1024)
+app.add_middleware(
+    drive_oauth.OAuthOwnerGuard,
+    api_key=settings.SIRI_API_KEY,
+    redirect_uri=settings.DRIVE_OAUTH_REDIRECT_URI,
+)
 
 # 註冊路由
 app.include_router(voice_note.router)
 app.include_router(line_webhook.router)
 app.include_router(capture_management.router)
+app.include_router(drive_oauth.router)
 
 # Mount Static Files (for Demo Page)
 static_dir = os.path.join(os.path.dirname(__file__), "static")

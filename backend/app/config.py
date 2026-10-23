@@ -5,6 +5,7 @@ Application Configuration
 
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,6 +50,7 @@ class Settings(BaseSettings):
     DRIVE_CLIENT_ID: str = ""
     DRIVE_CLIENT_SECRET: str = ""
     DRIVE_REFRESH_TOKEN: str = ""
+    DRIVE_OAUTH_REDIRECT_URI: str = ""
     JEV_API_KEY: str = ""
     MODEL_TIMEOUT_SECONDS: int = Field(default=60, ge=1, le=300)
     DELETION_PREVIEW_SECONDS: int = Field(default=600, ge=30, le=3600)
@@ -81,6 +83,29 @@ class Settings(BaseSettings):
         if any(category.id == "unclassified" for category in categories):
             raise ValueError("unclassified is reserved for unmatched captures")
         return categories
+
+    @field_validator("DRIVE_OAUTH_REDIRECT_URI")
+    @classmethod
+    def fixed_drive_callback(cls, value: str) -> str:
+        if not value:
+            return value
+        url = urlsplit(value)
+        if (
+            not url.hostname
+            or url.username is not None
+            or url.password is not None
+            or url.query
+            or url.fragment
+            or url.path != "/oauth/google/callback"
+            or (
+                url.scheme != "https"
+                and not (url.scheme == "http" and url.hostname in ("localhost", "127.0.0.1", "::1"))
+            )
+        ):
+            raise ValueError("Use HTTPS or localhost and the fixed Google callback path")
+        if url.port is not None and not 1 <= url.port <= 65535:
+            raise ValueError("Invalid callback port")
+        return value
 
 
 def get_settings() -> Settings:
