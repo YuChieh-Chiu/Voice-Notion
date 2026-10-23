@@ -4,7 +4,7 @@
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。120 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。121 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **120 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **121 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -66,7 +66,7 @@ vn_uat() {
 }
 ```
 
-用私人編輯器填妥 `.env.uat`：不同於正式服務的 `SIRI_API_KEY`、固定共用 `TASK_ENCRYPTION_KEY`、Web Drive client ID／secret／`DRIVE_OAUTH_REDIRECT_URI`。新連接的 `DRIVE_FOLDER_ID`／`DRIVE_REFRESH_TOKEN` 留空，透過 `http://localhost:8081/oauth/google/setup` 建立 `Voice-Notion-UAT` 私人根目錄。依部署指南在同一瀏覽器完成授權，owner status 必須 `connected=true`。token 加密保存於 UAT SQLite，worker 可直接讀取；不用抄寫 token。摘要再填 `GEMINI_API_KEY`，LINE 流程再填三項 LINE 設定，缺少部分只標為未驗收。
+用私人編輯器填妥 `.env.uat`：不同於正式服務的 `SIRI_API_KEY`、固定共用 `TASK_ENCRYPTION_KEY`、Web Drive client ID／secret／`DRIVE_OAUTH_REDIRECT_URI`。新連接的 `DRIVE_FOLDER_ID`／`DRIVE_REFRESH_TOKEN` 留空，透過 `http://localhost:8081/oauth/google/setup` 建立 `Voice-Notion-UAT` 私人根目錄。依部署指南在同一瀏覽器完成授權，owner status 必須 `connected=true`。token 加密保存於 UAT SQLite，worker 可直接讀取；不用抄寫 token。摘要另需 `GEMINI_API_KEY` 及可用額度；LINE 純推播只需 access token＋user ID，收件／指令／按鈕／收回才另需 Channel secret＋公開 HTTPS webhook。缺少部分只標為未驗收。
 
 初次設定建議先固定標記分類，避免把模型判斷與管線問題混在一起：
 
@@ -91,9 +91,30 @@ Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或�
 
 2026-10-23 本機真實 UAT 紀錄：操作者已完成 Web Google 同意，24 項檢查通過，覆蓋共用加密連接、以儲存的 refresh token 換取 access token、真實 HTTP／worker 原檔上傳與 SHA256 讀回比對、明確主題、重試同一 cloud ID 且不增副本、預覽／取消／確認真實垃圾桶、刪後拒絕重建、正常重啟後授權及 tombstone 保留、SQLite／WAL 與當次應用／代理日誌的秘密檢查。測試只建立並清理專用 UAT 的一筆來源，不永久刪除；私人證據在 `data-uat/drive-live-20261023.json`，不提交 Git。
 
-此輪故意保持 Gemini key 空白，驗證原檔成功後的摘要失敗狀態；**尚未驗收完整原文＋摘要兩檔成功、語音 STT、Jev 語意分類、LINE、Notion 或 Linode**。沒有等待 access token 自然過期，也沒有真實撤銷 refresh token；不要將離線故障測試改列為真實通過。其餘各列仍須逐項執行。
+上述第一輪故意保持 Gemini key 空白，驗證原檔成功後的摘要失敗狀態。沒有等待 access token 自然過期，也沒有真實撤銷 refresh token；不要將離線故障測試改列為真實通過。
 
-LINE 測試需要公開 HTTPS 入口，只轉發到這個測試環境的 8081；把入口的 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`），測試 Channel webhook 設成 `https://測試網域/api/v1/line/webhook`，啟用 webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
+同日補齊部分供應商設定後的第二輪紀錄如下；這是各項證據的範圍，尚未完成全表驗收：
+
+| 功能 | 真實驗證結果 | 證據與限制 |
+| --- | --- | --- |
+| 圖片／PDF／一般附件原檔與清理 | 25 項通過 | 直接呼叫正式 CaptureProcessor，寫入真實 Drive，再走 HTTP 管理 API；4 筆新造的 PNG／PDF／ZIP／文字附件各只保存原檔，下載位元組及 SHA 一致，涵蓋明確主題、未分類、停用分類、單檔預覽／取消／確認、跨筆檔案去重批次垃圾桶、整筆 tombstone 與重試拒絕。只清理這 4 筆測試原檔；未走 LINE 收件或一般附件 HTTP 上傳入口。 |
+| 文字／語音完整保存與內容讀回 | 5 筆流程完成，40 項讀回檢查通過 | HTTP 三主題文字各 2 檔；Siri binary API 與 multipart API 各一筆合成語音、各 3 檔，語音經 Jev 分為 fitness。雲端原檔與送出位元組完全一致，逐字稿及摘要 SHA、來源 metadata／連結、私人權限與確切檔案角色通過；不是 iPhone 捷徑或 LINE 手機收件測試。 |
+| Jev 語意分類 | 9／9 簡單案例符合預期 | 三主題各 3 句、不帶 # 標記，呼叫真實 Jev；不是廣泛準確率評估，也不是完整文字摘要管線通過。 |
+| Whisper 本機 STT | 一段合成語音的 5 項語意檢查通過 | 11.49 秒中文語音，small／CPU／int8；活動、星期、時間、時長及「尚未完成」皆保留。模型已下載至 UAT 私人快取；本次約 5.1 秒包含快取後模型載入，非效能保證、真實手機語音或完整三檔流程。 |
+| LINE 發送通知 | API 接受，操作者確認手機收到測試推播 | 這只證明已發出的指定測試推播送達，未逐則人工確認其他流程通知。`notified` 僅是應用狀態，通知停用時也可能為 true，不能單獨證明 API 接受或手機送達。 |
+| Gemini 摘要與額度故障恢復 | 額度恢復後 5 筆完成；內容品質仍需人工校對 | 初始生成診斷回覆 402 RESOURCE_EXHAUSTED／預付額度耗盡，worker status 只記 RuntimeError。操作者更新額度後重試同一 CID 成功，原檔 cloud ID 保持不變、真實目錄恰為 2 檔，另兩主題與兩筆語音亦完成。五筆保留核心金額、時間及否定語意，但有下述品質限制，不代表完整忠實或零幻覺。 |
+| 校對後批次清語音原檔 | 19 項檢查通過，有客戶端等待限制 | 經 HTTP 管理 API 驗證未校對拒絕、校對更新 note、單筆預覽取消及取消 token 拒絕、依 fitness／日期精確選兩筆音檔。批次確認客戶端等候 40 秒後逾時；只讀核對同一預覽的伺服器紀錄為 done／complete，再讀回確認兩音檔在真實垃圾桶、逐字稿未改、摘要與移除註記正確、舊連結撤下。未重做刪除；完成後重試不建回原檔，每筆仍保留文字兩檔。 |
+| 還原設定後的狀態與入口防護 | 15 項檢查通過 | web／worker 重建後授權、五筆完成狀態、兩筆未校對與兩音檔垃圾桶狀態保留；未帶管理 key 的管理／OAuth status 為 401。實際私人設定值未出現於當前容器日誌；此掃描不含已刪除容器的日誌，不等同完整日誌或整站資安稽核。 |
+| LINE 收件／指令／按鈕／收回 | 依使用者要求跳過 | 缺 Channel secret；未設定公開 HTTPS webhook，未更改 Channel 設定。 |
+| Notion／BYOK、Linode、Mac 同步 | 未驗收 | 未配置專用 Notion 測試權限；本機 UAT 不能替代正式主機與手機端驗收。 |
+
+**摘要品質限制：** 測試操作者與 review_stage_e 獨立核對發現，finance 多加原文沒有的「會議記錄」背景，tech 將「尚未完成實作」強化為「尚未進入程式碼實作」。一般模板允許的補充建議也不是原文。這兩筆維持未校對，不因模型成功就批准原檔清理；只有兩筆已核對一致的語音用於 review／清理驗收。這輪只驗特定測試案例，不能當成模型準確率保證。
+
+第二輪私人證據：`data-uat/full-uat-{attachments,jev,stt,line-push,core,content,reviewed-cleanup,final}-20261023.json`，不提交 Git；附件等直接 harness 測試不能取代對應入口的真實事件。API 金鑰與 OAuth 憑證未寫入公開報告。暫時改成 Jev 的 UAT Router 於測試後還原為原本的 rules，只恢復該設定，不覆蓋操作者補入的憑證。批次確認若等待逾時，先查實際狀態並保留原確認 token，不要據此當作失敗而另開新批次。
+
+查找 LINE Channel secret：登入 [LINE Developers Console](https://developers.line.biz/console/)，選 Provider → 這個 **Messaging API Channel** → **Basic settings** → **Channel secret**，需要該 Channel 的 Admin 權限。複製既有值到私人 `.env.uat` 的 `LINE_CHANNEL_SECRET`；不要貼到聊天。單純查找不需按 **Issue**，重新簽發會讓舊 secret 失效。[LINE 官方說明](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/#get-channel-secret)
+
+LINE 收件／指令／按鈕／收回測試需要公開 HTTPS 入口，只轉發到這個測試環境的 8081；把入口的 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`），測試 Channel webhook 設成 `https://測試網域/api/v1/line/webhook`，啟用 webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。純推播不需要公開入口或 Channel secret。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 
 **每次修改 `.env.uat` 都要重建容器設定；只用 restart 不會載入新環境變數：**
 

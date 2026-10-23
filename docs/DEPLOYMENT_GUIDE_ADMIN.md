@@ -33,7 +33,7 @@ Compose 只把 nginx 綁在 `127.0.0.1:8080`，請於前方配置 HTTPS reverse 
 docker compose up -d --build
 ```
 
-映像使用追蹤的 Poetry lock；web 只裝 main，worker 裝 main＋worker，初始化工具與測試不進映像。worker 預設 concurrency 1，STT 模型首次載入會由 faster-whisper 下載至 `/data/models`。本次開發驗證未下載模型、未部署或呼叫真實業務 API。
+映像使用追蹤的 Poetry lock；web 只裝 main，worker 裝 main＋worker，初始化工具與測試不進映像。worker 預設 concurrency 1，STT 模型首次載入會由 faster-whisper 下載至 `/data/models`。離線回歸不下載模型或呼叫真實服務；後續經使用者授權的隔離 UAT 已下載模型，並呼叫真實 Drive、Jev、Gemini 與 LINE 推播，範圍及結果見驗收指南。
 
 ## 選擇目的地
 
@@ -98,7 +98,7 @@ Drive 文字兩檔，語音三檔；圖片／PDF／一般檔案只存一個原�
 
 External＋Testing 的這類 refresh token 在 7 天後到期；需要重新授權。長期運行前另確認 OAuth app 發布與帳號政策。[Google 到期規則](https://developers.google.com/identity/protocols/oauth2#expiration)
 
-**接續測試的依賴：** 完成 Web 授權即可驗證 Drive token 刷新、固定根目錄、檔案上傳／讀回／垃圾桶與重試；文字摘要另需 `GEMINI_API_KEY`。Jev 語意分類另需 `JEV_API_KEY`，可先用 rules；LINE 收件／推播另需三項 LINE 設定及 HTTPS webhook。只完成 Drive 時，其他功能仍標為未驗收。
+**接續測試的依賴：** 完成 Web 授權即可驗證 Drive token 刷新、固定根目錄、檔案上傳／讀回／垃圾桶與重試；文字摘要另需 `GEMINI_API_KEY` 及可用額度。Jev 語意分類另需 `JEV_API_KEY`，可先用 rules。LINE 純推播只需 access token 與 user ID；收件／指令／按鈕／收回才另需 Channel secret 及公開 HTTPS webhook。只完成 Drive 時，其他功能仍標為未驗收。
 
 服務只要求 `drive.file`；**填入任意 folder ID 不會取得權限**。新流程建立自己的私人根目錄；可在 Drive 手動移到 Atlas 下並保留 ID。既有目錄須先經同一 app 的檔案授權流程，本版沒有 Picker UI。目標不能是 anyone／domain 分享，不建立公開連結。
 
