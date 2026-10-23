@@ -35,6 +35,21 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=1 -Q celery
+
+  line-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2 -Q line-events
 
   redis:
     image: redis:7-alpine

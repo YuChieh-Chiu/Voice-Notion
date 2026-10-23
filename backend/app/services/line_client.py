@@ -44,6 +44,19 @@ class LineClient:
                 raise ValueError("LINE content is empty")
             return bytes(content)
 
+    def show_loading(self) -> bool:
+        """僅顯示手機端暫時動畫；短逾時及失敗都不阻擋正式操作。"""
+        try:
+            with self.client() as client:
+                response = client.post(
+                    "https://api.line.me/v2/bot/chat/loading/start",
+                    json={"chatId": self.settings.LINE_USER_ID, "loadingSeconds": 60},
+                    timeout=2.0,  # 動畫是輔助回饋，不使用完整模型逾時預算。
+                )
+                return response.status_code == 202
+        except (httpx.HTTPError, ValueError):
+            return False
+
     def push(self, text: str, *, key: str, actions: list | None = None) -> None:
         message = {"type": "text", "text": text[:4500]}
         if actions:

@@ -168,6 +168,8 @@ class LineEventProcessor:
         if result:
             self.client.push(result["text"], key="event:" + event_id, actions=result["actions"])
             return
+        if parts and parts[0] in ("/review", "/clear", "/confirm"):
+            self.client.show_loading()
         try:
             if len(parts) == 2 and parts[0] in ("/files", "/file"):
                 text = management.describe(parts[1])

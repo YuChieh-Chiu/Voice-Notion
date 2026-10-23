@@ -767,6 +767,45 @@ def test_retained_network_timeout_after_intent_remains_retryable(setup, monkeypa
     assert service.confirm(preview["token"])["complete"]
 
 
+def test_two_line_workers_confirming_same_token_trash_only_once(setup, monkeypatch):
+    repository, settings, fake, _, service = setup
+    record, _ = make_capture(setup)
+    service.review(record.id)
+    files = {file.role: file for file in repository.files(record.id)}
+    preview = service.preview("original", capture_id=record.id)
+    barrier = threading.Barrier(2, timeout=10)
+    outcomes = []
+
+    def confirm():
+        storage = DriveStorage(repository, settings, service=fake)
+        worker = DeletionService(repository, settings, drive_factory=lambda *args: storage)
+        load = worker._load
+
+        def read_pending(token, owner_id):
+            row = load(token, owner_id)
+            assert row["status"] == "pending"
+            barrier.wait()
+            return row
+
+        monkeypatch.setattr(worker, "_load", read_pending)
+        try:
+            outcomes.append(worker.confirm(preview["token"])["complete"])
+        except DeletionConflict:
+            outcomes.append("conflict")
+
+    threads = [threading.Thread(target=confirm, daemon=True) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+        assert not thread.is_alive()
+    assert sorted(str(item) for item in outcomes) == ["True", "conflict"]
+    assert sum(kind == "trash" for kind, _ in fake.operations) == 1
+    assert repository.file(files["original"].id).state == "trashed"
+    assert all(repository.file(files[role].id).state == "uploaded" for role in ("note", "transcript"))
+    assert service._load(preview["token"], "owner")["status"] == "done"
+
+
 @pytest.mark.parametrize("status", ["pending", "running", "done"])
 def test_line_rejects_oversized_api_tokens_before_result_or_cleanup(setup, monkeypatch, status):
     repository, settings, fake, _, service = setup

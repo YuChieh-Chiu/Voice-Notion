@@ -3,6 +3,7 @@ Celery Application Configuration
 """
 
 from celery import Celery
+from kombu import Queue
 
 from app.config import get_settings
 
@@ -17,6 +18,17 @@ celery_app = Celery(
 
 # Celery 配置
 celery_app.conf.update(
+    task_default_queue="celery",
+    task_queues=(
+        Queue("celery", routing_key="celery"),
+        Queue("line-events", routing_key="line-events"),
+    ),
+    task_routes={
+        "app.worker.tasks.process_line_event": {
+            "queue": "line-events",
+            "routing_key": "line-events",
+        }
+    },
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",

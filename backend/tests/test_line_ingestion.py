@@ -72,6 +72,71 @@ def test_signature_whitelist_private_chat_and_encrypted_outbox(line_setup):
     assert TaskSecurity.decrypt_payload(stored["payload"]) == event()
 
 
+@pytest.mark.parametrize("status", [202, 401, 429])
+def test_loading_uses_fixed_owner_endpoint_and_short_timeout(line_setup, status):
+    settings, _, _ = line_setup
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        assert str(request.url) == "https://api.line.me/v2/bot/chat/loading/start"
+        assert json.loads(request.content) == {"chatId": "test-owner", "loadingSeconds": 60}
+        assert request.extensions["timeout"]["read"] == 2.0
+        return httpx.Response(status)
+
+    client = LineClient(settings, transport=httpx.MockTransport(handler))
+    assert client.show_loading() is (status == 202)
+    assert len(requests) == 1
+
+
+def test_loading_timeout_is_optional_feedback(line_setup):
+    settings, _, _ = line_setup
+
+    def handler(request):
+        raise httpx.ReadTimeout("temporary animation timeout", request=request)
+
+    assert not LineClient(settings, transport=httpx.MockTransport(handler)).show_loading()
+    assert not LineClient(settings.model_copy(update={"LINE_CHANNEL_ACCESS_TOKEN": ""})).show_loading()
+
+
+@pytest.mark.parametrize("private_owner", [False, True])
+def test_slow_command_loading_runs_after_owner_check_and_not_on_replay(line_setup, private_owner):
+    settings, repository, _ = line_setup
+    value = event(text="/review C0123456789abcdef")
+    if not private_owner:
+        value["source"]["userId"] = "someone-else"
+    store = LineEventStore(repository)
+    store.accept(value)
+    client = MagicMock()
+    client.show_loading.return_value = False
+    processor = LineEventProcessor(repository, settings, MagicMock(), client=client)
+    if not private_owner:
+        with pytest.raises(ValueError, match="Unauthorized"):
+            processor.process("event1")
+        client.show_loading.assert_not_called()
+        client.push.assert_not_called()
+        return
+    processor.process("event1")
+    assert client.method_calls[0][0] == "show_loading"
+    assert "找不到" in client.push.call_args.args[0]
+    assert client.push.call_args.kwargs["key"] == "event:event1"
+    client.show_loading.assert_called_once()
+    client.push.assert_called_once()
+    processor.process("event1")
+    client.show_loading.assert_called_once()
+    client.push.assert_called_once()
+
+
+@pytest.mark.parametrize("command", ["/help", "/file C0123456789abcdef", "/cancel unknown"])
+def test_fast_commands_do_not_wait_for_loading_api(line_setup, command):
+    settings, repository, _ = line_setup
+    LineEventStore(repository).accept(event(text=command))
+    client = MagicMock()
+    LineEventProcessor(repository, settings, MagicMock(), client=client).process("event1")
+    client.show_loading.assert_not_called()
+    client.push.assert_called_once()
+
+
 @pytest.mark.parametrize(
     "kind,content,count",
     [
