@@ -1,6 +1,6 @@
 """
 FastAPI Main Application
-Siri-Notion Backend
+Note-Goblin Backend
 """
 
 import os
@@ -107,7 +107,7 @@ async def root():
     static_file = os.path.join(os.path.dirname(__file__), "static", "demo.html")
     if os.path.exists(static_file):
         return FileResponse(static_file, headers=PORTAL_HEADERS)
-    return {"status": "ok", "service": "Siri-Notion Backend"}
+    return {"status": "ok", "service": settings.APP_NAME}
 
 
 @app.get("/demo")

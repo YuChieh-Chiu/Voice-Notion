@@ -103,7 +103,7 @@ def setup():
     response = HTMLResponse(page.replace("{{nonce}}", nonce))
     response.headers["Content-Security-Policy"] = (
         f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'self' 'nonce-{nonce}'; "
-        "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+        "img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     )
     return response
 
@@ -167,7 +167,7 @@ def complete():
         page.replace("{{nonce}}", nonce),
         headers={
             "Content-Security-Policy": f"default-src 'none'; style-src 'self' 'nonce-{nonce}'; "
-            "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+            "img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         },
     )
 

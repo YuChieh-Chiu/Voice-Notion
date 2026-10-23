@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     SIRI_API_KEY: str = ""  # iOS Shortcuts API 驗證金鑰
 
     # Application
-    APP_NAME: str = "Voice-Notion"
+    APP_NAME: str = "Note-Goblin"
     DEBUG: bool = False
 
     # Security
