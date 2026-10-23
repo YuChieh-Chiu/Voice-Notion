@@ -1,0 +1,61 @@
+# 獨立驗收環境；搭配 -p voice-notion-uat --env-file .env.uat 使用。
+name: voice-notion-uat
+
+services:
+  web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.web
+    restart: unless-stopped
+    volumes:
+      - ./data-uat:/data
+    env_file:
+      - .env.uat
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CAPTURE_DATA_DIR: /data
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --no-access-log
+
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    volumes:
+      - ./data-uat:/data
+    env_file:
+      - .env.uat
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CAPTURE_DATA_DIR: /data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:

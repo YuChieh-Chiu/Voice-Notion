@@ -2,16 +2,18 @@
 LLM Service - Gemini
 兩階段 LLM：路由判斷 + 依模板生成摘要
 """
+
 import json
-import os
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
+
 from google import genai
 from google.genai import types
+
 from app.config import get_settings
 from app.core.logger import get_logger
 from app.prompts.routing import ROUTING_PROMPT
-from app.schemas.context import UserContext, AuthType
+from app.schemas.context import AuthType, UserContext
 
 settings = get_settings()
 logger = get_logger(__name__)
@@ -24,7 +26,7 @@ ROUTING_SCHEMA = genai.types.Schema(
         "action": genai.types.Schema(
             type=genai.types.Type.STRING,
             description="操作類型：create (在 Root 下建立新子頁面) 或 append (在現有 Subpage 追加內容)",
-            enum=["create", "append"]
+            enum=["create", "append"],
         ),
         "target_id": genai.types.Schema(
             type=genai.types.Type.STRING,
@@ -41,7 +43,7 @@ ROUTING_SCHEMA = genai.types.Schema(
         "template_type": genai.types.Schema(
             type=genai.types.Type.STRING,
             description="摘要模板：meeting / idea / todo / general",
-            enum=["meeting", "idea", "todo", "general"]
+            enum=["meeting", "idea", "todo", "general"],
         ),
     },
 )
@@ -49,7 +51,7 @@ ROUTING_SCHEMA = genai.types.Schema(
 
 class LLMService:
     """Large Language Model Service - 兩階段架構"""
-    
+
     def __init__(self, context: Optional[UserContext] = None):
         if context and context.type == AuthType.DEMO:
             self.is_demo = True
@@ -60,22 +62,21 @@ class LLMService:
             api_key = settings.GEMINI_API_KEY
             self.is_demo = False
 
-        self.client = genai.Client(api_key=api_key)
+        self.client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=settings.MODEL_TIMEOUT_SECONDS * 1000),
+        )
         self.templates_dir = Path(__file__).parent.parent / "prompts" / "templates"
         logger.info(f"Gemini client initialized (Mode: {'Demo' if self.is_demo else 'Admin'})")
-    
-    def route(
-        self, 
-        transcript: str, 
-        page_tree: Dict[str, List[Dict[str, str]]]
-    ) -> Dict:
+
+    def route(self, transcript: str, page_tree: Dict[str, List[Dict[str, str]]]) -> Dict:
         """
         LLM Stage 1: 路由判斷
-        
+
         Args:
             transcript: 語音逐字稿
             page_tree: { "roots": [], "subpages": [] }
-            
+
         Returns:
             {
                 "action": "create" | "append",
@@ -87,94 +88,98 @@ class LLMService:
         """
         try:
             # Format Roots and Subpages for Prompt
-            roots_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("roots", [])])
-            subpages_str = "\n".join([f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("subpages", [])])
-            
-            prompt = ROUTING_PROMPT.format(
-                transcript=transcript,
-                roots=roots_str or "(無)",
-                subpages=subpages_str or "(無)"
+            roots_str = "\n".join(
+                [f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("roots", [])]
             )
-            
-            contents = [types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
-            )]
-            
+            subpages_str = "\n".join(
+                [f"- {p['title']} (ID: {p['id']})" for p in page_tree.get("subpages", [])]
+            )
+
+            prompt = ROUTING_PROMPT.format(
+                transcript=transcript, roots=roots_str or "(無)", subpages=subpages_str or "(無)"
+            )
+
+            contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
+
             config = types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=ROUTING_SCHEMA,
-                temperature=0.0
+                temperature=0.0,
             )
-            
+
             response = self.client.models.generate_content(
-                model="gemini-flash-lite-latest",
-                contents=contents,
-                config=config
+                model="gemini-flash-lite-latest", contents=contents, config=config
             )
-            
+
             result = json.loads(response.text)
-            logger.info(f"Routing result: {result}")
-            
+            if not isinstance(result, dict) or result.get("action") not in ("create", "append"):
+                raise ValueError("Invalid routing response")
+            scope = "roots" if result["action"] == "create" else "subpages"
+            if result.get("target_id") not in {page["id"] for page in page_tree.get(scope, [])}:
+                raise ValueError("Routing target is outside the configured Notion tree")
+            for key in ("title", "new_topic_name"):
+                if not isinstance(result.get(key, ""), str):
+                    raise ValueError("Routing titles must be strings")
+                result[key] = result.get(key, "")[:180]
+            result["title"] = result["title"] or "Untitled Note"
+            if result.get("template_type") not in ("meeting", "idea", "todo", "general"):
+                result["template_type"] = "general"
+            logger.info("Notion routing completed")
+
             return result
-            
-        except Exception as e:
-            logger.error(f"LLM routing failed: {e}", exc_info=True)
-            raise
-    
+
+        except Exception as exc:
+            logger.error("LLM routing failed (%s)", type(exc).__name__)
+            raise RuntimeError("LLM routing failed") from None
+
     def summarize(self, transcript: str, template_type: str) -> str:
         """
         LLM Stage 2: 依模板生成摘要
-        
+
         Args:
             transcript: 語音逐字稿
             template_type: 模板類型
-            
+
         Returns:
             摘要內容（依模板格式）
         """
         try:
             # 載入模板
+            if template_type not in ("meeting", "idea", "todo", "general"):
+                template_type = "general"
             template_path = self.templates_dir / f"{template_type}.md"
             if not template_path.exists():
                 logger.warning(f"Template {template_type} not found, using general")
                 template_path = self.templates_dir / "general.md"
-            
+
             with open(template_path, "r", encoding="utf-8") as f:
                 template = f.read()
-            
+
             # 載入共用的規範
             markdown_spec_path = self.templates_dir / "_spec.md"
             markdown_spec = ""
             if markdown_spec_path.exists():
                 with open(markdown_spec_path, "r", encoding="utf-8") as f:
                     markdown_spec = f.read()
-            
+
             # 組合：原模板 + 規範
             full_template = template + "\n" + markdown_spec
-            
+
             prompt = full_template.format(transcript=transcript)
-            
-            contents = [types.Content(
-                role="user",
-                parts=[types.Part.from_text(text=prompt)]
-            )]
-            
-            config = types.GenerateContentConfig(
-                temperature=1.0
-            )
-            
+
+            contents = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
+
+            config = types.GenerateContentConfig(temperature=1.0)
+
             response = self.client.models.generate_content(
-                model="gemini-flash-lite-latest",
-                contents=contents,
-                config=config
+                model="gemini-flash-lite-latest", contents=contents, config=config
             )
-            
+
             summary = response.text
             logger.info(f"Summary generated using template: {template_type}")
-            
+
             return summary
-            
-        except Exception as e:
-            logger.error(f"LLM summarization failed: {e}", exc_info=True)
-            raise
+
+        except Exception as exc:
+            logger.error("LLM summarization failed (%s)", type(exc).__name__)
+            raise RuntimeError("LLM summarization failed") from None
