@@ -1,53 +1,130 @@
 <!doctype html>
 <html lang="zh-Hant">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>連接 Google Drive</title>
-<style nonce="{{nonce}}">
-:root{color-scheme:dark;--bg:#0f172a;--card:#1e293b;--text:#f8fafc;--muted:#cbd5e1;--accent:#22c55e;--error:#fda4af}
-*{box-sizing:border-box}body{margin:0;padding:32px 20px;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,sans-serif}
-main{max-width:560px;margin:32px auto;padding:24px;background:var(--card);border-radius:16px}
-h1{font-size:1.65rem;margin-top:0}p{color:var(--muted)}label{display:block;margin-top:20px;font-weight:600}
-input,button{width:100%;min-height:48px;border-radius:8px;font:inherit;padding:10px 12px}
-input{margin-top:8px;color:var(--text);background:var(--bg);border:1px solid #94a3b8}
-button{margin-top:16px;border:0;background:var(--accent);color:#0f172a;font-weight:700;cursor:pointer}
-button.secondary{background:var(--bg);color:var(--text);border:1px solid #94a3b8}
-button:active{opacity:.8}button:disabled{opacity:.55;cursor:wait}:focus-visible{outline:3px solid #a5b4fc;outline-offset:3px}
-#error{color:var(--error);overflow-wrap:anywhere}#status{overflow-wrap:anywhere}small{display:block;color:var(--muted);margin-top:8px}
-</style>
-<main>
-<h1>連接 Google Drive</h1>
-<p>以部署者身分授權，建立專用私人資料夾。重新授權會沿用原帳號與資料夾。</p>
-<div id="error" role="alert" tabindex="-1"></div>
-<form id="connection">
+<title>Google Drive 授權設定 · Voice-Notion</title>
+<link rel="stylesheet" href="/static/capture.css">
+</head>
+<body>
+<div class="shell narrow">
+<header class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M4 8h6l2 3h8v8H4V8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 5h8l2 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>Voice-Notion · 收件小站</header>
+<main class="card">
+<span class="pill"><span class="pill-dot" aria-hidden="true"></span>個人部署 · Google Drive</span>
+<h1>連接你的<span>Google Drive。</span></h1>
+<p class="intro">授權你的 Google 帳號，讓本服務保存收件原檔、逐字稿與摘要。第一次授權會建立專用私人資料夾；重新授權沿用原帳號與資料夾。</p>
+<noscript><p>此設定頁需要 JavaScript 才能送出授權或查詢狀態；未啟用時不會傳送管理金鑰。</p></noscript>
+<p id="error" class="feedback error" role="alert" tabindex="-1"></p>
+<form id="connection" method="post" action="#" novalidate>
+<div class="field">
 <label for="key">部署者管理金鑰</label>
-<input id="key" type="password" autocomplete="current-password" required aria-describedby="key-help">
-<small id="key-help">金鑰只用於本次操作，不儲存至瀏覽器。</small>
-<label for="root">新資料夾名稱</label>
-<input id="root" value="Voice-Notion-UAT" required maxlength="100">
-<button type="submit">前往 Google 授權</button>
-<button type="button" class="secondary" id="check">查看連接狀態</button>
-<button type="button" class="secondary" id="retry">重試完成資料夾設定</button>
+<input id="key" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="key-help">
+<span id="key-help" class="help">用於確認你有權管理本服務。每次操作後會清空本頁輸入；這不是 Google 帳號密碼。</span>
+</div>
+<div class="field">
+<label for="root">首次授權的新資料夾名稱</label>
+<input id="root" value="Voice-Notion-UAT" required maxlength="100" aria-describedby="root-help">
+<span id="root-help" class="help">只在第一次連線時建立。重新授權不會依新名稱另建資料夾；查詢狀態與重試不需要填寫此欄。</span>
+</div>
+<div class="actions"><button class="primary" type="submit">前往 Google 帳號授權</button></div>
+<div class="actions">
+<button type="button" class="secondary" id="check">查看 Google Drive 授權狀態</button>
+<button type="button" class="quiet" id="retry">重試完成專用資料夾設定</button>
+</div>
 </form>
+<section id="status-panel" class="status-panel" hidden aria-labelledby="status-heading">
+<h2 id="status-heading">Google Drive 授權狀態</h2>
 <p id="status" role="status" aria-live="polite"></p>
+<p id="account" hidden></p>
+<a id="folder" target="_blank" rel="noopener noreferrer" hidden>開啟專用 Google Drive 資料夾</a>
+</section>
+<div class="section-divider small">
+<p>Google Drive 授權完成後，不會自動開始收件。請繼續設定 Siri 或 LINE 等入口，再送一則測試記錄確認保存結果。</p>
+<p>若要使用自己的 Gemini／Notion 金鑰產生 Siri 設定，請到<a href="/demo">Notion 捷徑設定頁</a>。</p>
+</div>
 </main>
+<p class="footer">授權金鑰由本服務加密保存，供背景收件與重試使用；請確認這是你信任的部署。</p>
+</div>
 <script nonce="{{nonce}}">
-const form=document.getElementById('connection'),key=document.getElementById('key'),error=document.getElementById('error'),status=document.getElementById('status');
-async function operation(path,method,body){
-  if(!form.reportValidity())return;
-  error.textContent='';status.textContent='正在處理…';
-  const secret=key.value;for(const button of form.querySelectorAll('button'))button.disabled=true;
-  try{
-    const response=await fetch('/oauth/google/'+path,{method,credentials:'same-origin',headers:{'X-API-Key':secret,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,cache:'no-store'});
-    const result=await response.json();
-    if(!response.ok)throw new Error(response.status===401?'管理金鑰不正確。':response.status===409?'請保留原帳號與用戶端；若有待完成的連接，請按「重試完成資料夾設定」。':'連接尚未完成，請確認設定後再試。');
-    if(result.authorization_url){window.location.assign(result.authorization_url);return;}
-    status.textContent=result.connected?'已連接：'+result.email+'；資料夾：'+result.folder_url:result.pending?'Google 已授權，資料夾尚待完成，請按重試。':'尚未連接，請先完成 Google 授權。';
-  }catch(problem){status.textContent='';error.textContent=problem.message;error.focus();}
-  finally{key.value='';for(const button of form.querySelectorAll('button'))button.disabled=false;}
-}
-form.addEventListener('submit',event=>{event.preventDefault();operation('start','POST',{root_name:document.getElementById('root').value.trim()});});
-document.getElementById('check').addEventListener('click',()=>operation('status','GET'));
-document.getElementById('retry').addEventListener('click',()=>operation('finish','POST'));
+(() => {
+  'use strict';
+  const form = document.getElementById('connection');
+  const key = document.getElementById('key');
+  const root = document.getElementById('root');
+  const error = document.getElementById('error');
+  const panel = document.getElementById('status-panel');
+  const status = document.getElementById('status');
+  const account = document.getElementById('account');
+  const folder = document.getElementById('folder');
+  class PortalError extends Error {}
+
+  async function operation(path, method) {
+    if (!key.reportValidity()) return;
+    if (path === 'start') {
+      root.value = root.value.trim();
+      if (!root.reportValidity()) return;
+    }
+    const secret = key.value;
+    key.value = '';
+    error.textContent = '';
+    panel.hidden = false;
+    status.textContent = '正在處理 Google Drive 授權…';
+    account.textContent = '';
+    account.hidden = true;
+    folder.hidden = true;
+    folder.removeAttribute('href');
+    for (const control of form.querySelectorAll('input, button')) control.disabled = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
+    try {
+      const headers = {'X-API-Key': secret};
+      const options = {method, credentials: 'same-origin', headers, cache: 'no-store', redirect: 'error', signal: controller.signal};
+      if (path === 'start') {
+        headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify({root_name: root.value});
+      }
+      const response = await fetch('/oauth/google/' + path, options);
+      const result = await response.json();
+      if (!response.ok) {
+        throw new PortalError(response.status === 401 ? '管理金鑰不正確，請重新輸入。' :
+          response.status === 403 ? '請使用部署者設定的連線頁網址。' :
+          response.status === 409 ? '請保留原 Google 帳號與用戶端；若連線待完成，請重試專用資料夾設定。' :
+          'Google Drive 授權尚未完成。請稍後查看狀態；若顯示待完成，再重試資料夾設定。');
+      }
+      if (result.authorization_url) {
+        const url = new URL(result.authorization_url);
+        if (url.protocol !== 'https:' || url.hostname !== 'accounts.google.com' || url.pathname !== '/o/oauth2/v2/auth') {
+          throw new PortalError('授權網址不符合 Google 官方端點，已停止跳轉。');
+        }
+        window.location.assign(url.href);
+        return;
+      }
+      status.textContent = result.connected ? 'Google Drive 授權已連接。' :
+        result.pending ? 'Google 帳號已授權，專用資料夾尚待完成設定。請按「重試完成專用資料夾設定」。' :
+        '尚未連接 Google Drive，請先完成 Google 帳號授權。';
+      if ((result.connected || result.pending) && typeof result.email === 'string' && result.email) {
+        account.textContent = 'Google 帳號：' + result.email;
+        account.hidden = false;
+      }
+      if (result.connected && typeof result.folder_id === 'string' && /^[A-Za-z0-9_-]{1,200}$/.test(result.folder_id)) {
+        folder.href = 'https://drive.google.com/drive/folders/' + encodeURIComponent(result.folder_id);
+        folder.hidden = false;
+      }
+    } catch (problem) {
+      panel.hidden = true;
+      error.textContent = problem.name === 'AbortError' ? '這次操作等待過久。請重新輸入金鑰，先查看授權狀態。' :
+        problem instanceof PortalError ? problem.message : '目前無法完成服務回覆，請稍後再查看授權狀態。';
+      error.focus();
+    } finally {
+      clearTimeout(timeout);
+      key.value = '';
+      for (const control of form.querySelectorAll('input, button')) control.disabled = false;
+    }
+  }
+  form.addEventListener('submit', event => { event.preventDefault(); operation('start', 'POST'); });
+  document.getElementById('check').addEventListener('click', () => operation('status', 'GET'));
+  document.getElementById('retry').addEventListener('click', () => operation('finish', 'POST'));
+})();
 </script>
+</body>
 </html>

@@ -102,7 +102,7 @@ def setup():
     page = (Path(__file__).parent.parent / "static" / "drive_setup.html").read_text()
     response = HTMLResponse(page.replace("{{nonce}}", nonce))
     response.headers["Content-Security-Policy"] = (
-        f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'nonce-{nonce}'; "
+        f"default-src 'none'; script-src 'nonce-{nonce}'; style-src 'self' 'nonce-{nonce}'; "
         "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
     )
     return response
@@ -166,7 +166,7 @@ def complete():
     return HTMLResponse(
         page.replace("{{nonce}}", nonce),
         headers={
-            "Content-Security-Policy": f"default-src 'none'; style-src 'nonce-{nonce}'; "
+            "Content-Security-Policy": f"default-src 'none'; style-src 'self' 'nonce-{nonce}'; "
             "frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         },
     )
