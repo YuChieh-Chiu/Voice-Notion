@@ -37,7 +37,7 @@ docker compose up -d --build
 
 | 設定 | 何時需要 |
 | --- | --- |
-| `CAPTURE_DESTINATION=drive` | 使用 Drive，填四項 `DRIVE_*` OAuth／資料夾設定；不要求 Notion token |
+| `CAPTURE_DESTINATION=drive` | 新部署使用 Web OAuth：client ID／secret＋固定 callback；token／根目錄加密保存在共用 SQLite，不要求 Notion token |
 | `CAPTURE_DESTINATION=notion` | 使用 Notion，填 `NOTION_TOKEN` 並授權頁面；不要求 Drive OAuth |
 | `GEMINI_API_KEY` | 文字／語音摘要；Notion 的頁面路由也使用 Gemini |
 | `LINE_CHANNEL_ACCESS_TOKEN`、`LINE_USER_ID` | LINE 推播；可留空關閉通知 |
@@ -46,23 +46,61 @@ docker compose up -d --build
 
 Drive 文字兩檔，語音三檔；圖片／PDF／一般檔案只存一個原檔，不解析、不送模型。Notion 只存全文／逐字稿與摘要；拒收圖片與檔案，不改存 Drive。切換目的地只影響新收件，沒有舊資料搬移。
 
-### Drive OAuth 與 Atlas/raw
+### Drive Web OAuth：從 Google Console 到可測試
 
-啟用 Google Drive API，建立 **Desktop app** OAuth client，下載 JSON 至 repo 外私人位置。服務只要求 `drive.file`；**填入任意 folder ID 不會取得權限**。既有資料夾必須已透過同一 OAuth app 的 Picker／檔案授權流程選取。本 repo 不提供 Picker UI，也不自動擴大成整個 Drive 的 scope。
+本機及 Linode 使用同一套 `/oauth/google/` 程式；本機 callback 用 localhost，Linode 用正式 HTTPS。以下先完成獨立 UAT；本機通過不代表 Linode 的目標 CPU 平台、外層代理與持久化已驗收。
 
-若尚未有 app 可存取的根目錄，可手動執行初始化工具。它會開官方 OAuth 瀏覽器同意頁，使用 loopback callback＋state／PKCE，建立私人目錄並把四項設定寫入新建、0600 的檔案；不覆寫 `.env`，不輸出秘密。
+1. 在 Google Cloud Console 新建或選擇專案，啟用 **Google Drive API**。
+2. 到 **Google Auth platform → Branding** 建立同意畫面。個人 Gmail 選 **External**；測試時在 **Audience → Test users** 加入稍後登入的 Google 帳號。
+3. 在 **Data Access** 加入且只要求 `https://www.googleapis.com/auth/drive.file`。
+4. 在 **Clients → Create Client** 選 **Web application**。截圖中的 **「已授權的 JavaScript 來源」留空**，在 **「已授權的重新導向 URI」** 新增：
 
-```bash
-cd backend
-poetry install --only main,setup
-poetry run python scripts/drive_oauth.py \
-  --client /private/path/google-desktop-client.json \
-  --output ../.env.drive-oauth --name raw
-```
+   ```text
+   http://localhost:8081/oauth/google/callback
+   ```
 
-以私人編輯器將產生的四項設定合併至 `.env`。可在 Drive 手動把新目錄移到 Atlas 下並保留 folder ID；若已有 raw，先確認 Atlas 的目錄約定再決定是否採用新目錄。對已授權的既有目錄，工具可加 `--folder-id` 驗證並沿用。工具只在操作者執行時連線、建立目錄；開發測試使用替身。
+   `http`、`localhost`、`8081` 與路徑必須完全一致，不加末尾斜線，也不要改用 LINE webhook。Linode 建立獨立 Web client，使用 `https://你的網域/oauth/google/callback`。
+5. 建立後下載 JSON 到私人位置；禁止提交 Git。以私人編輯器將 `web.client_id`、`web.client_secret` 填入測試用 `.env.uat`；不要把 JSON／secret 貼到聊天或 issue。新部署設定如下，保留既有的 `SIRI_API_KEY`／`TASK_ENCRYPTION_KEY`：
 
-OAuth consent app 的發布／測試使用者與 refresh token 有效期依 Google 專案設定；收到 invalid_grant 時重新授權，不把 token 貼入 issue 或日誌。保留同一 OAuth client 與 `/data`，否則 instance 標記與去重 ID 不相同。目標與分類目錄不能是 anyone／domain 分享；不建立公開連結。既有個別分享仍由帳號管理者控制。
+   ```dotenv
+   CAPTURE_DESTINATION=drive
+   DRIVE_CLIENT_ID=<Web client ID>
+   DRIVE_CLIENT_SECRET=<Web client secret>
+   DRIVE_OAUTH_REDIRECT_URI=http://localhost:8081/oauth/google/callback
+   DRIVE_FOLDER_ID=
+   DRIVE_REFRESH_TOKEN=
+   ```
+
+6. 按 [驗收指南](TESTING_GUIDE.md) 建立 UAT 私人目錄與設定，於 repo 根目錄啟動：
+
+   ```bash
+   docker compose -p voice-notion-uat --env-file .env.uat -f docker-compose.uat.yml up -d --build
+   ```
+
+7. 用**同一瀏覽器**開啟 `http://localhost:8081/oauth/google/setup`。從私人 `.env.uat` 複製 `SIRI_API_KEY` 的值，貼到「部署者管理金鑰」，新資料夾填 `Voice-Notion-UAT`，按「前往 Google 授權」。網頁不會把管理金鑰存入 localStorage／cookie。
+8. 在 Google 登入已加入 Test users 的帳號，核對 app 與權限後同意。不要從聊天連結手動拼接 callback；它必須帶同一瀏覽器的 session。回到無 code 的完成頁後，請回報「已授權」即可，不分享完整 callback 網址。
+9. 可在連線頁重新輸入管理金鑰按「查看連接狀態」；或帶 `X-API-Key` 呼叫 `GET /oauth/google/status`。`connected=true` 才代表 token 與專用私人根目錄已完成。status 不回傳 access／refresh token。
+
+授權後的 refresh token、Google 帳號識別與固定根目錄 ID 以 Fernet 加密保存在共用 SQLite，web／worker 每次操作讀取同一連接；不用手動抄 refresh token，也不用為此重建容器。需要保留同一 `TASK_ENCRYPTION_KEY`、OAuth client 與私人 data volume。只有變更 `.env.uat` 才需 `up -d --force-recreate web worker`。
+
+連接頁使用自託管資源；owner 驗證先於 OAuth JSON body 解析。state 限時且一次性，搭配瀏覽器 HttpOnly cookie 與 PKCE。成功 callback 轉往不含 code 的完成頁；Compose、Dockerfile 及內層 nginx 不記 callback 查詢字串。**Linode 外層 HTTPS proxy、CDN 或 WAF 的 access／error 日誌也必須遮罩或停記 callback query；本機設定不能替代此檢查。**
+
+常見狀況：
+
+- Google `redirect_uri_mismatch`：檢查 Console 與 `DRIVE_OAUTH_REDIRECT_URI` 的 scheme、主機、port、路徑及尾斜線。
+- Google `access_denied`：核對登入帳號是否列在 Test users，以及 Drive API／同意畫面設定。
+- 連線頁 401：管理金鑰應為本環境的 `SIRI_API_KEY`，不是 Google client secret。
+- 回呼 400：session 過期、換瀏覽器、取消或重放；回連線頁重新按授權。
+- 根目錄建立途中故障：按「重試完成資料夾設定」，沿用已保存的固定 ID；若 pending token 已失效，重新授權仍保留原帳號與根目錄。
+- 重新授權 409：不允許改成另一 Google 帳號／client 或默默替換既有受管根目錄；先保留原設定再規劃遷移。
+
+External＋Testing 的這類 refresh token 在 7 天後到期；需要重新授權。長期運行前另確認 OAuth app 發布與帳號政策。[Google 到期規則](https://developers.google.com/identity/protocols/oauth2#expiration)
+
+**接續測試的依賴：** 完成 Web 授權即可驗證 Drive token 刷新、固定根目錄、檔案上傳／讀回／垃圾桶與重試；文字摘要另需 `GEMINI_API_KEY`。Jev 語意分類另需 `JEV_API_KEY`，可先用 rules；LINE 收件／推播另需三項 LINE 設定及 HTTPS webhook。只完成 Drive 時，其他功能仍標為未驗收。
+
+服務只要求 `drive.file`；**填入任意 folder ID 不會取得權限**。新流程建立自己的私人根目錄；可在 Drive 手動移到 Atlas 下並保留 ID。既有目錄須先經同一 app 的檔案授權流程，本版沒有 Picker UI。目標不能是 anyone／domain 分享，不建立公開連結。
+
+舊部署已配置 `DRIVE_FOLDER_ID`／`DRIVE_REFRESH_TOKEN` 的方式仍可運作；`scripts/drive_oauth.py` 是舊 Desktop 初始化相容工具，不是上述 Web 流程。已有受管雲端檔案不會自動遷移或覆寫授權；請勿直接清空舊設定／DB 來重新初始化。
 
 Atlas/raw 是一般 Drive 根目錄，目錄為 `<root>/<主題可省略>/<年月>/<C代號>/`。Atlas 的規則、索引、wiki 不由本服務修改。**雲端保存成功不表示 Mac 同步完成**。
 
@@ -137,4 +175,4 @@ poetry check --lock
 
 測試以暫存目錄、假憑證與 HTTP／SDK 替身執行，不載入私人 `.env`，不呼叫模型、Drive、Notion、LINE。部署後仍須由操作者驗證 OAuth refresh、資料夾授權、Notion 頁面權限、LINE 真實 redelivery／收回與 `/data` 持久化。
 
-官方依據：[Drive scope](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)、[Google installed-app OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[續傳](https://developers.google.com/workspace/drive/api/guides/manage-uploads)、[垃圾桶](https://developers.google.com/workspace/drive/api/guides/delete)、[LINE 簽章](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/)、[LINE 重試](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/)、[Notion block archive](https://developers.notion.com/reference/delete-a-block)。
+官方依據：[Drive scope](https://developers.google.com/workspace/drive/api/guides/api-specific-auth)、[Google Web OAuth](https://developers.google.com/identity/protocols/oauth2/web-server)、[舊 Desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)、[續傳](https://developers.google.com/workspace/drive/api/guides/manage-uploads)、[垃圾桶](https://developers.google.com/workspace/drive/api/guides/delete)、[LINE 簽章](https://developers.line.biz/en/docs/messaging-api/verify-webhook-signature/)、[LINE 重試](https://developers.line.biz/en/docs/messaging-api/retrying-api-request/)、[Notion block archive](https://developers.notion.com/reference/delete-a-block)。

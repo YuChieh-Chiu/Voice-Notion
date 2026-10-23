@@ -1,10 +1,10 @@
 # 逐項測試與驗收指南
 
-2026-10-22；功能基準為 `964b1a1`。本指南對應 [已確認計畫](MULTI_SOURCE_CAPTURE_PLAN.md)，帳號設定見 [部署指南](DEPLOYMENT_GUIDE_ADMIN.md)。
+2026-10-23；包含 `964b1a1` 收件基準與後續 Web OAuth 擴充。本指南對應 [已確認計畫](MULTI_SOURCE_CAPTURE_PLAN.md)，從 Google Console 到授權的完整步驟見 [部署指南](DEPLOYMENT_GUIDE_ADMIN.md#drive-web-oauth從-google-console-到可測試)。
 
 **建議順序：離線回歸 → 隔離環境 → Drive 收件與分類 → LINE 清理／收回 → 故障恢復 → Notion／BYOK 相容。** 先走下方「第一次驗收」，再逐項勾選表格。
 
-`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。102 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
+`/health` 正常只代表 HTTP 服務可用，`202` 只代表已保存收件並嘗試排入工作；都不能單獨當成整條流程通過。120 項離線測試使用外部服務替身，不等於已驗證真實 OAuth、STT 品質、模型摘要、LINE 帳號或 Mac 同步。
 
 ## 1. 先跑離線回歸
 
@@ -17,7 +17,7 @@ poetry run ruff check app scripts/drive_oauth.py tests
 poetry check --lock
 ```
 
-此功能基準應有 **102 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
+此功能基準應有 **120 passed**；未來新增測試以實際輸出為準。測試不解析私人 `.env`，使用假憑證與暫存目錄，不需要 Redis、真實雲端或下載 Whisper 模型。套件安裝本身需要網路。
 
 | 功能 | 對應測試（位於 `backend/tests/`） | 能證明的範圍 |
 | --- | --- | --- |
@@ -31,6 +31,7 @@ poetry check --lock
 | 清理與收回 | `test_deletion_service.py` | 校對、確認、取消／過期、部分失敗、保留全文 guard、刪除競態與 Notion 區塊範圍 |
 | 串接、跨筆批次與隱私 | `test_capture_integration.py` | 路由／DB／處理器串接、跨 owner 拒絕、task 回傳不含原文、Notion 外加子內容保護 |
 | OAuth 初始化工具 | `test_drive_oauth.py` | 官方端點與 desktop client、拒絕混合設定、0600 新檔、不覆寫既有檔 |
+| Web OAuth／共用憑證 | `test_drive_web_oauth.py` | owner 前置驗證、瀏覽器綁定、PKCE、過期／取消／重放、加密、worker 讀取、同帳號／root、pending 恢復與重新授權 |
 
 只重跑某組：`PYTHONPATH=. poetry run pytest tests/test_deletion_service.py -q`。
 
@@ -65,7 +66,7 @@ vn_uat() {
 }
 ```
 
-用私人編輯器填妥 `.env.uat`：不同於正式服務的 `SIRI_API_KEY`、固定共用 `TASK_ENCRYPTION_KEY`、測試 Drive 四項設定、`GEMINI_API_KEY` 與三項 LINE 設定。Fernet／Drive OAuth 初始化方式見部署指南；新建 Drive 根目錄時使用 `--name Voice-Notion-UAT`，輸出到另一個未存在的私人檔案，例如 `.env.drive-uat`。
+用私人編輯器填妥 `.env.uat`：不同於正式服務的 `SIRI_API_KEY`、固定共用 `TASK_ENCRYPTION_KEY`、Web Drive client ID／secret／`DRIVE_OAUTH_REDIRECT_URI`。新連接的 `DRIVE_FOLDER_ID`／`DRIVE_REFRESH_TOKEN` 留空，透過 `http://localhost:8081/oauth/google/setup` 建立 `Voice-Notion-UAT` 私人根目錄。依部署指南在同一瀏覽器完成授權，owner status 必須 `connected=true`。token 加密保存於 UAT SQLite，worker 可直接讀取；不用抄寫 token。摘要再填 `GEMINI_API_KEY`，LINE 流程再填三項 LINE 設定，缺少部分只標為未驗收。
 
 初次設定建議先固定標記分類，避免把模型判斷與管線問題混在一起：
 
@@ -85,6 +86,12 @@ curl --fail http://localhost:8081/health
 ```
 
 四個服務應啟動；health 回 `{"status":"healthy"}`。第一次語音轉錄會下載 STT 模型，記錄暖機與後續處理時間，不預設固定完成秒數。
+
+Web OAuth 先驗：不帶管理 key 不能 start／finish／status；錯誤或重放 callback 不改連接；Google 同意後建立私人根目錄、API status 不暴露 token；重啟服務仍連接。資料夾建立失敗按 finish 重試，同一 root ID 不增加副本；pending token 到期可重新同帳號授權。若未實際故障注入，恢復分支只記離線通過。Linode 外層代理另核對 callback query 不進日誌。本機映像若為 arm64，不能當成 Linode amd64／原生 STT 已驗收。
+
+2026-10-23 本機真實 UAT 紀錄：操作者已完成 Web Google 同意，24 項檢查通過，覆蓋共用加密連接、以儲存的 refresh token 換取 access token、真實 HTTP／worker 原檔上傳與 SHA256 讀回比對、明確主題、重試同一 cloud ID 且不增副本、預覽／取消／確認真實垃圾桶、刪後拒絕重建、正常重啟後授權及 tombstone 保留、SQLite／WAL 與當次應用／代理日誌的秘密檢查。測試只建立並清理專用 UAT 的一筆來源，不永久刪除；私人證據在 `data-uat/drive-live-20261023.json`，不提交 Git。
+
+此輪故意保持 Gemini key 空白，驗證原檔成功後的摘要失敗狀態；**尚未驗收完整原文＋摘要兩檔成功、語音 STT、Jev 語意分類、LINE、Notion 或 Linode**。沒有等待 access token 自然過期，也沒有真實撤銷 refresh token；不要將離線故障測試改列為真實通過。其餘各列仍須逐項執行。
 
 LINE 測試需要公開 HTTPS 入口，只轉發到這個測試環境的 8081；把入口的 hostname 加到 `.env.uat` 的 `ALLOWED_HOSTS`（保留 `localhost,127.0.0.1`），測試 Channel webhook 設成 `https://測試網域/api/v1/line/webhook`，啟用 webhook／redelivery。驗證 webhook URL 成功仍不代表內容下載、白名單或推播已通過；這些要另外測。[LINE 官方收件與驗簽說明](https://developers.line.biz/en/docs/messaging-api/receiving-messages/)
 
@@ -216,7 +223,7 @@ C10 的語音可在 Jev／Gemini 模式準備，確認實際分類後才做批�
 | [ ] F05 QueueUnavailable | `vn_uat stop redis` 後經 HTTP 送新文字；若 client 先逾時，先恢復 Redis 再用 `GET /api/v1/captures` 找當次來源，不盲目重送 | 原文已在私人暫存；正常回覆為 503＋capture_id。還原 `vn_uat start redis`，對已登記 CID retry，最後內容正確 |
 | [ ] F06 正常重啟 | 記錄已完成／已刪 CID 與 cloud IDs，`vn_uat restart web worker redis` | 原紀錄與去重標記還在，不額外建立雲端副本；已刪內容不重生 |
 | [ ] F07 停機後恢復 | `vn_uat down` 後再次 `vn_uat up -d`；**不加 -v** | SQLite 與 Redis volume 保留；原 CID 可查，已刪內容仍不重生 |
-| [ ] F08 Drive 尚未配置 | 在另一輪 UAT 暫時清空 Drive folder ID，經 HTTP 收新文字 | 可先接受本機來源，但最後 failed，不能聲稱已存入 Drive；恢復根目錄設定後 retry 同一 CID |
+| [ ] F08 Drive 尚未配置 | 在尚無 Web 連接的新 UAT，保留 Drive token／folder ID 空白，經 HTTP 收新文字 | 可先接受本機來源，但最後 failed，不能聲稱已存入 Drive；完成 Web 授權後 retry 同一 CID。既有 Web 連接不會因環境 folder ID 空白而消失，請勿刪除既有 DB 冒充未配置 |
 
 原檔／逐字稿／摘要已可靠寫入且不需重試後，`data-uat/captures/<CID>/` 應無內容檔；鎖與 SQLite 管理紀錄仍會保留。pending／failed 內容及失敗的 note metadata 待傳稿可以留在私人暫存，不能把「非空」一律當漏清理；這版沒有按天自動清除失敗來源。
 

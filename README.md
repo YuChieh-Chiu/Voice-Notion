@@ -163,6 +163,8 @@ backend/
 
 逐項確認功能請依 [測試與驗收指南](docs/TESTING_GUIDE.md)，先跑離線回歸，再使用獨立 UAT 環境測真實服務。
 
+新 Drive 連接採 Web OAuth；Google Console 的重新導向 URI、本機連線頁及 Linode 設定見 [完整設定流程](docs/DEPLOYMENT_GUIDE_ADMIN.md#drive-web-oauth從-google-console-到可測試)。
+
 - Web Container: 輕量，不包含 faster-whisper
 - Worker Container: 包含 STT 模型與 ffmpeg
 - 共用 codebase，透過不同 Dockerfile 達成分離

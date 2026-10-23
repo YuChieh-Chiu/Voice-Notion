@@ -25,7 +25,7 @@
 
 ## 保存與分類
 
-Drive 使用使用者 OAuth，refresh token 只放服務設定；僅操作官方固定端點，不接受模型指定 URL 或路徑。分類結果經允許清單映射。
+Drive 使用使用者 OAuth。依 2026-10-23 後續討論，新部署改用 Web OAuth，本機與 Linode 共用固定 `/oauth/google/callback` 流程；client secret／Fernet key 留在私人設定，refresh token 與根目錄加密存於 web／worker 共用 SQLite。部署者驗證、限時一次性 state、瀏覽器綁定、PKCE、同帳號／client／根目錄約束為必要防護。舊環境變數與 Desktop 工具僅保留相容，不自動遷移。僅操作官方固定端點，不接受模型指定 URL 或路徑。分類結果經允許清單映射。
 
 目錄：`<目標>/<主題（可省略）>/<年月>/<來源 ID>/`。停用分類按日期保存；未知分類進待分類。原檔先落地，分類可決定或調整該筆資料夾位置。
 
@@ -72,7 +72,9 @@ Notion 頁面樹與 create／append 留在 Notion 模組；每筆有可定位來
 | E | 清理 API、LINE 指令／按鈕、收回 | 確認、過期／重放、單檔／批次、競態 |
 | F | 整合回歸與部署說明 | 離線全流程、憑證與 volume 配置 |
 
-每階段完成後：測試／lint → **獨立 subagent 審查計畫符合度、clean code 與 High／Critical 資安風險** → 修正必修項、必要時再審 → commit → push 同一 feature 分支。不直接推 main、不 force push。超過十檔時按可驗證子任務分批提交。
+每階段完成後：測試／lint → **獨立 subagent 審查計畫符合度、clean code 與 Medium／High／Critical 資安風險** → 修正必修項、必要時再審 → commit → push 同一 feature 分支。不直接推 main、不 force push。超過十檔時按可驗證子任務分批提交。
+
+2026-10-23 的 Web OAuth 擴充不代表整站已適合公開部署：一般 BYOK／轉送 IP 限流、未授權 multipart 暫存及舊 Demo CDN 風險仍須另行修正；Linode 的目標平台映像、HTTPS／代理日誌、資源與持久化必須在正式環境另驗。
 
 參考指定 commit／code-review 技能的通用檢查；Wayken 專屬的多品牌、唯讀資料層、skills 鏡像不是本 repo 規則。測試用替身，不打真實 Drive／LINE／Notion 或模型；雲端權限與實帳號驗證在配置後另做。
 
