@@ -15,6 +15,20 @@ from app.services.deletion_service import DeletionService
 from app.services.line_client import LineClient
 
 EVENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+COMMAND_HELP = """Note-Goblin 指令說明
+/help 或 /：查看這份說明。
+/files C代號（或 /file C代號）：查看一筆收件的檔案、狀態與連結。
+/review C代號：標記已人工校對完整原文與摘要，不會刪檔。
+/clear C代號 original：預覽清理已校對語音的原始音檔，保留逐字稿與摘要。
+/clear C代號 all：預覽清理整筆受管檔案，可能移除唯一內容。
+/clear file F代號 [F代號...]：預覽清理明確指定的一個或多個檔案。
+/clear reviewed [topic=主題] [before=YYYY-MM-DD]：批次預覽已校對語音的原始音檔；可縮小主題及日期範圍。
+before 採 UTC 收件日期，只選指定日期之前的收件。
+/confirm token：確認執行該份限時預覽；請使用預覽提供的實際 token。
+/cancel token：取消該份尚未執行的預覽。
+
+語音原檔捷徑需先人工校對；未校對或只有原檔的收件，請明確指定檔案或整筆。
+Drive 清理只移到垃圾桶，仍占儲存空間；不會永久刪除或清空垃圾桶。"""
 
 
 class LineEventStore:
@@ -152,8 +166,29 @@ class LineEventProcessor:
             self.client.push(result["text"], key="event:" + event_id, actions=result["actions"])
             return
         try:
-            if len(parts) == 2 and parts[0] == "/files":
+            if len(parts) == 2 and parts[0] in ("/files", "/file"):
                 text = management.describe(parts[1])
+                record = self.repository.get(parts[1], owner_id="owner")
+                files = {file.role: file for file in self.repository.files(record.id)}
+                required_roles = {
+                    "text": {"original", "note"},
+                    "audio": {"original", "transcript", "note"},
+                }.get(record.kind)
+                if (
+                    record.status == "complete"
+                    and required_roles
+                    and required_roles <= files.keys()
+                    and all(file.state == "uploaded" for file in files.values())
+                ):
+                    clear_original = record.kind == "audio" and bool(record.reviewed_at)
+                    actions = [
+                        {
+                            "type": "postback",
+                            "label": "預覽清理原檔" if clear_original else "確認全文與摘要正確",
+                            "data": ("clear-original:" if clear_original else "review:")
+                            + record.id,
+                        }
+                    ]
             elif len(parts) == 2 and parts[0] == "/review":
                 record = deletion.review(parts[1])
                 text = f"{record.id} 已確認完整原文與摘要；尚未清理任何檔案。"
@@ -190,6 +225,9 @@ class LineEventProcessor:
                         ],
                         preview["warning"],
                         "確認限時有效；確認只處理這份清單。",
+                        "看不到按鈕時，可複製並送出以下指令：",
+                        "/confirm " + preview["token"],
+                        "/cancel " + preview["token"],
                     ]
                 )
                 if len(text) > 4400:
@@ -223,8 +261,12 @@ class LineEventProcessor:
                     )
             elif len(parts) == 2 and parts[0] == "/cancel":
                 text = "清理確認狀態：" + deletion.cancel(parts[1])["status"]
+            elif parts and parts[0] in ("/files", "/file"):
+                text = "用法：/files C代號（或 /file C代號），查看指定收件的檔案與狀態。"
+            elif len(parts) == 1 and parts[0] in ("/help", "/"):
+                text = COMMAND_HELP
             else:
-                text = "指令：/files C代號、/review C代號、/clear C代號 original|all、/clear file F代號、/clear reviewed [topic=主題] [before=YYYY-MM-DD]。未校對或只有原檔時，請明確選擇指定檔案或整筆。"
+                text = "無法辨識指令；輸入 /help 查看可用指令。"
         except (ValueError, KeyError) as exc:
             text = str(exc) if isinstance(exc, ValueError) else "找不到可操作的收件或確認清單。"
         self.repository.save_system_value(
