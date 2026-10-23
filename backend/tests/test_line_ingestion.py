@@ -12,6 +12,7 @@ from app.config import Settings
 from app.core.security import TaskSecurity
 from app.main import app
 from app.routes import line_webhook
+from app.services import line_messages
 from app.services.capture_management import CaptureManagement
 from app.services.capture_repository import CaptureRepository
 from app.services.deletion_service import DeletionService
@@ -301,6 +302,7 @@ def test_long_preview_including_text_fallback_is_cancelled(line_setup, monkeypat
         "token": "test-preview-token",
         "count": 1,
         "total_bytes": 7,
+        "expires_at": 2000000000,
         "files": [
             {"capture_id": "C" + "a" * 16, "id": "F" + "b" * 16, "role": "original", "bytes": 7}
         ],
@@ -314,6 +316,39 @@ def test_long_preview_including_text_fallback_is_cancelled(line_setup, monkeypat
     deletion.confirm.assert_not_called()
     assert "清單太長" in client.push.call_args.args[0]
     assert client.push.call_args.kwargs["actions"] == []
+
+
+def test_line_preview_checks_actual_file_count_before_offering_confirmation(
+    line_setup, monkeypatch
+):
+    settings, repository, _ = line_setup
+    deletion = MagicMock()
+    deletion.preview.return_value = {
+        "token": "x" * 32,
+        "count": 1,
+        "total_bytes": 46,
+        "expires_at": 2000000000,
+        "files": [
+            {
+                "capture_id": "C" + "a" * 16,
+                "id": "F" + format(i, "016x"),
+                "role": "note",
+                "bytes": 1,
+            }
+            for i in range(46)
+        ],
+        "warning": "垃圾桶仍占容量。",
+    }
+    assert len(line_messages.cleanup_preview(deletion.preview.return_value, scope="all")) < 4400
+    monkeypatch.setattr("app.services.line_events.DeletionService", lambda *args: deletion)
+    client = MagicMock()
+    LineEventProcessor(repository, settings, MagicMock(), client=client).command(
+        "/clear C" + "a" * 16 + " all", "too-many-files"
+    )
+    deletion.cancel.assert_called_once_with("x" * 32)
+    deletion.confirm.assert_not_called()
+    assert client.push.call_args.kwargs["actions"] == []
+    assert "/confirm " not in client.push.call_args.args[0]
 
 
 def capture_with_artifacts(
@@ -444,7 +479,7 @@ def test_unknown_and_incomplete_commands_give_short_guidance_without_mutating_ca
     client, enqueue = MagicMock(), MagicMock()
     LineEventProcessor(repository, settings, enqueue, client=client).process("event1")
     assert expected in client.push.call_args.args[0]
-    assert len(client.push.call_args.args[0]) < 100
+    assert len(client.push.call_args.args[0]) < 200
     assert client.push.call_args.kwargs["actions"] == []
     assert [r.id for r in repository.list_captures("owner")] == [record.id]
     assert repository.get(record.id).model_dump() == before

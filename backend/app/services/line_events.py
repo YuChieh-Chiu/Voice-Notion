@@ -8,6 +8,7 @@ from contextlib import contextmanager
 
 from app.config import Settings
 from app.core.security import TaskSecurity
+from app.services import line_messages
 from app.services.audio_validator import validate_audio_format
 from app.services.capture_management import CaptureManagement
 from app.services.capture_repository import CaptureRepository
@@ -15,8 +16,10 @@ from app.services.deletion_service import DeletionService
 from app.services.line_client import LineClient
 
 EVENT_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
-COMMAND_HELP = """Note-Goblin 指令說明
-/help 或 /：查看這份說明。
+# 本服務 LineClient 單則上限 4500 字；45 檔含完整結果及來源註記錯誤可容於此上限。
+# HTTP 可有更大清單，因此預覽與確認皆需限制，不能依賴 LineClient 截斷。
+LINE_CONFIRM_RESULT_MAX_FILES = 45
+COMMAND_HELP = """/help 或 /：查看這份說明。
 /files C代號（或 /file C代號）：查看一筆收件的檔案、狀態與連結。
 /review C代號：標記已人工校對完整原文與摘要，不會刪檔。
 /clear C代號 original：預覽清理已校對語音的原始音檔，保留逐字稿與摘要。
@@ -128,7 +131,7 @@ class LineEventProcessor:
                 if record:
                     DeletionService(self.repository, self.settings).retract(record.id)
                 self.client.push(
-                    "收回已處理：服務管理內容已撤下。另存副本、Atlas 衍生內容與供應商備份不在此範圍。",
+                    line_messages.retraction(record.id if record else None),
                     key="event:" + event_id,
                 )
             elif event["type"] == "postback":
@@ -191,7 +194,7 @@ class LineEventProcessor:
                     ]
             elif len(parts) == 2 and parts[0] == "/review":
                 record = deletion.review(parts[1])
-                text = f"{record.id} 已確認完整原文與摘要；尚未清理任何檔案。"
+                text = line_messages.review(record)
                 if record.destination == "drive" and record.kind == "audio":
                     actions = [
                         {
@@ -201,6 +204,7 @@ class LineEventProcessor:
                         }
                     ]
             elif parts and parts[0] == "/clear":
+                filters = []
                 if len(parts) >= 2 and parts[1] == "reviewed":
                     options = dict(p.split("=", 1) for p in parts[2:])
                     if options.keys() - {"topic", "before"}:
@@ -208,29 +212,25 @@ class LineEventProcessor:
                     preview = deletion.preview(
                         "reviewed", category=options.get("topic"), before=options.get("before")
                     )
+                    scope = "reviewed"
+                    if options.get("topic"):
+                        filters.append("主題：" + line_messages.one_line(options["topic"], 64))
+                    if options.get("before"):
+                        filters.append(
+                            "UTC 收件日期早於：" + line_messages.one_line(options["before"], 32)
+                        )
                 elif len(parts) >= 3 and parts[1] == "file":
                     preview = deletion.preview("files", file_ids=parts[2:])
+                    scope = "files"
                 elif len(parts) == 3:
                     preview = deletion.preview(parts[2], capture_id=parts[1])
+                    scope = parts[2]
                 else:
                     raise ValueError(
                         "請指定 /clear C代號 original 或 all，或 /clear file F代號、/clear reviewed"
                     )
-                text = "\n".join(
-                    [
-                        f"清理預覽：{preview['count']} 檔／{preview['total_bytes']} bytes",
-                        *[
-                            f"{f['capture_id']} {f['id']} {f['role']} {f['bytes']} bytes"
-                            for f in preview["files"]
-                        ],
-                        preview["warning"],
-                        "確認限時有效；確認只處理這份清單。",
-                        "看不到按鈕時，可複製並送出以下指令：",
-                        "/confirm " + preview["token"],
-                        "/cancel " + preview["token"],
-                    ]
-                )
-                if len(text) > 4400:
+                text = line_messages.cleanup_preview(preview, scope=scope, filters=filters)
+                if len(preview["files"]) > LINE_CONFIRM_RESULT_MAX_FILES or len(text) > 4400:
                     deletion.cancel(preview["token"])
                     raise ValueError("清單太長，請用 topic=主題 或 before=YYYY-MM-DD 縮小範圍")
                 actions = [
@@ -242,33 +242,41 @@ class LineEventProcessor:
                     {"type": "postback", "label": "取消", "data": "cancel:" + preview["token"]},
                 ]
             elif len(parts) == 2 and parts[0] == "/confirm":
-                outcome = deletion.confirm(parts[1])
-                text = (
-                    "清理完成"
-                    if outcome["complete"]
-                    else "部分清理失敗；可重送本次確認以重試失敗項目"
-                ) + "\n"
-                text += (
-                    "\n".join(f"{f['file_id']}: {f['status']}" for f in outcome["files"])
-                    + "\n"
-                    + outcome["message"]
+                outcome = deletion.confirm(parts[1], max_result_files=LINE_CONFIRM_RESULT_MAX_FILES)
+                text = line_messages.cleanup_result(
+                    outcome,
+                    token=parts[1],
+                    capture_ids=[
+                        self.repository.file(item["file_id"]).capture_id
+                        for item in outcome["files"]
+                    ],
                 )
-                if outcome["metadata_errors"]:
-                    text += (
-                        "\n筆記來源狀態尚未更新："
-                        + ", ".join(item["capture_id"] for item in outcome["metadata_errors"])
-                        + "。網路故障可重試；若外部編輯衝突，需依部署指南人工調和，請勿持續重點確認。"
-                    )
             elif len(parts) == 2 and parts[0] == "/cancel":
-                text = "清理確認狀態：" + deletion.cancel(parts[1])["status"]
+                text = line_messages.cleanup_cancel(deletion.cancel(parts[1])["status"])
             elif parts and parts[0] in ("/files", "/file"):
-                text = "用法：/files C代號（或 /file C代號），查看指定收件的檔案與狀態。"
+                text = line_messages.message(
+                    "指令用法",
+                    "需要指定一筆收件",
+                    content=["用法：/files C代號（或 /file C代號），查看指定收件的檔案與狀態。"],
+                    next_steps=["請填入實際紀錄ID後送出。"],
+                )
             elif len(parts) == 1 and parts[0] in ("/help", "/"):
-                text = COMMAND_HELP
+                help_body, _, reminders = COMMAND_HELP.partition("\n\n")
+                text = line_messages.message(
+                    "指令說明",
+                    "可用管理指令",
+                    content=help_body.splitlines(),
+                    next_steps=["選擇上方指令，填入實際代號後送出。"],
+                    reminders=reminders.splitlines(),
+                )
             else:
-                text = "無法辨識指令；輸入 /help 查看可用指令。"
+                text = line_messages.message(
+                    "指令未辨識", "無法辨識指令", next_steps=["輸入 /help 查看可用指令。"]
+                )
         except (ValueError, KeyError) as exc:
-            text = str(exc) if isinstance(exc, ValueError) else "找不到可操作的收件或確認清單。"
+            text = line_messages.operation_error(
+                str(exc) if isinstance(exc, ValueError) else "找不到可操作的收件或確認清單。"
+            )
         self.repository.save_system_value(
             "line_command:" + event_id, {"text": text, "actions": actions}
         )
@@ -281,11 +289,24 @@ class LineEventProcessor:
         if self.store.revoked(message_id):
             return
         if kind not in ("text", "audio", "image", "file"):
-            self.client.push("目前支援文字、語音、圖片與檔案。", key="event:" + event_id)
+            self.client.push(
+                line_messages.message(
+                    "收件未接受",
+                    "不支援這種訊息類型",
+                    next_steps=["請傳送文字、語音、圖片或檔案。"],
+                ),
+                key="event:" + event_id,
+            )
             return
         if self.settings.CAPTURE_DESTINATION == "notion" and kind in ("image", "file"):
             self.client.push(
-                "Notion 模式只保存文字與語音轉錄，不收附件；未改存其他目的地。",
+                line_messages.message(
+                    "收件未接受",
+                    "Notion 模式不收附件",
+                    content=["Notion 只保存文字與語音轉錄。"],
+                    next_steps=["請改傳文字或語音。"],
+                    reminders=["未改存其他目的地。"],
+                ),
                 key="event:" + event_id,
             )
             return

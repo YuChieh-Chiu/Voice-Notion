@@ -93,6 +93,8 @@ class CaptureProcessor:
                     url,
                     capture_id=capture_id,
                     original_only=record.kind in ("image", "file"),
+                    destination=record.destination,
+                    reviewed=bool(record.reviewed_at),
                 )
                 repository.update_capture(capture_id, notified=True, encrypted_context=None)
             return result

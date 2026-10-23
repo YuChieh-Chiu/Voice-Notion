@@ -210,13 +210,17 @@ class DeletionService:
             )
         return {"status": self._load(token, owner_id)["status"]}
 
-    def confirm(self, token, owner_id="owner"):
+    def confirm(self, token, owner_id="owner", *, max_result_files=None):
         row = self._load(token, owner_id)
+        data = json.loads(row["data"])
+        if max_result_files is not None and len(data["files"]) > max_result_files:
+            raise ValueError(
+                "這批明細太長，LINE未套用本次確認；請透過管理 API 完成操作或查看完整結果"
+            )
         if row["status"] == "done":
             return json.loads(row["result"])
         if row["status"] == "cancelled":
             raise DeletionConflict("清單已取消")
-        data = json.loads(row["data"])
         if row["status"] == "pending":
             if time.time() > row["expires"]:
                 raise DeletionConflict("確認已過期，請重新預覽")

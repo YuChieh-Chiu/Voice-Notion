@@ -573,3 +573,93 @@ def test_reviewed_batch_retry_ignores_metadata_updated_by_its_completed_items(se
     assert not service.confirm(preview["token"])["complete"]
     assert service.confirm(preview["token"])["complete"]
     assert sum(kind == "trash" for kind, _ in fake.operations) == 2
+
+
+def create_local_cleanup_files(repository, count):
+    file_ids = []
+    for _ in range(count):
+        record, _ = repository.create(
+            owner_id="owner",
+            channel="http",
+            kind="file",
+            destination="drive",
+            content=b"local test source",
+            original_name="file.pdf",
+            mime_type="application/pdf",
+        )
+        file_ids.append(repository.files(record.id)[0].id)
+    return file_ids
+
+
+@pytest.mark.parametrize("status", ["pending", "running", "done"])
+def test_line_rejects_oversized_api_tokens_before_result_or_cleanup(setup, monkeypatch, status):
+    repository, settings, fake, _, service = setup
+    file_ids = create_local_cleanup_files(repository, 46)
+    preview = service.preview("files", file_ids=file_ids)
+    if status == "done":
+        assert service.confirm(preview["token"])["complete"]
+    elif status == "running":
+        with repository.connection() as connection:
+            connection.execute("UPDATE deletion_previews SET status='running'")
+    before = [repository.file(file_id).model_dump() for file_id in file_ids]
+    before_preview = service._load(preview["token"], "owner")
+    execute = MagicMock(side_effect=AssertionError("Oversized LINE confirmation executed cleanup"))
+    monkeypatch.setattr(service, "_execute", execute)
+    monkeypatch.setattr("app.services.line_events.DeletionService", lambda *args: service)
+    client = MagicMock()
+    LineEventProcessor(repository, settings, MagicMock(), client=client).command(
+        "/confirm " + preview["token"], "large-confirm"
+    )
+    assert "LINE未套用本次確認" in client.push.call_args.args[0]
+    assert "請透過管理 API 完成操作或查看完整結果" in client.push.call_args.args[0]
+    assert "未執行清理" not in client.push.call_args.args[0]
+    assert service._load(preview["token"], "owner") == before_preview
+    assert [repository.file(file_id).model_dump() for file_id in file_ids] == before
+    execute.assert_not_called()
+    assert fake.operations == []
+    with pytest.raises(KeyError):
+        service.confirm(preview["token"], owner_id="foreign", max_result_files=45)
+
+
+@pytest.mark.parametrize("count", [45, 46])
+def test_api_default_confirmation_is_not_restricted_to_line_result_limit(setup, monkeypatch, count):
+    repository, settings, _, _, service = setup
+    file_ids = create_local_cleanup_files(repository, count)
+    monkeypatch.setattr(capture_management, "settings", settings)
+    client = TestClient(app, base_url="http://localhost")
+    response = client.post(
+        "/api/v1/deletions/preview",
+        json={"scope": "files", "file_ids": file_ids},
+        headers={"X-API-Key": "test-personal"},
+    )
+    assert response.status_code == 200
+    token = response.json()["token"]
+    if count == 45:
+        result = service.confirm(token, max_result_files=45)
+    else:
+        response = client.post(
+            "/api/v1/deletions/confirm",
+            json={"token": token},
+            headers={"X-API-Key": "test-personal"},
+        )
+        assert response.status_code == 200
+        result = response.json()
+    assert result["complete"] and len(result["files"]) == count
+    assert all(repository.file(file_id).state == "trashed" for file_id in file_ids)
+
+
+def test_result_count_guard_preserves_owner_expiry_and_cancel_checks(setup):
+    repository, _, _, _, service = setup
+    file_ids = create_local_cleanup_files(repository, 1)
+    preview = service.preview("files", file_ids=file_ids)
+    with pytest.raises(KeyError):
+        service.confirm(preview["token"], owner_id="foreign", max_result_files=45)
+    service.cancel(preview["token"])
+    with pytest.raises(DeletionConflict, match="取消"):
+        service.confirm(preview["token"], max_result_files=45)
+    preview = service.preview("files", file_ids=file_ids)
+    with repository.connection() as connection:
+        connection.execute("UPDATE deletion_previews SET expires=0")
+    with pytest.raises(DeletionConflict, match="過期"):
+        service.confirm(preview["token"], max_result_files=45)
+    assert repository.file(file_ids[0]).state == "local"

@@ -4,6 +4,7 @@ import uuid
 
 from app.config import get_settings
 from app.schemas.context import AuthType, UserContext
+from app.services import line_messages
 from app.services.line_client import LineClient
 
 settings = get_settings()
@@ -30,11 +31,20 @@ class NotificationService:
         *,
         capture_id: str | None = None,
         original_only: bool = False,
+        destination: str = "drive",
+        reviewed: bool = False,
     ) -> None:
         if not self.enabled:
             return
-        status = "原檔已保存，未解析" if original_only else "完整原文與摘要已保存"
-        text = f"✅ {status}\n{title}\n{capture_id or ''}\n{url}\n雲端保存成功；本機同步狀態請於 Drive 確認。"
+        text = line_messages.completion(
+            title,
+            url,
+            capture_id=capture_id,
+            original_only=original_only,
+            destination=destination if self.personal else "notion",
+            personal=self.personal,
+            reviewed=reviewed,
+        )
         actions = []
         if capture_id and self.personal:
             actions.append({"type": "message", "label": "查看檔案", "text": "/files " + capture_id})
@@ -51,6 +61,10 @@ class NotificationService:
     def push_partial(self, capture_id: str) -> None:
         if self.enabled:
             self.client.push(
-                f"⚠️ {capture_id} 原檔已保存至 Drive，文字處理尚未完成。請用 /files {capture_id} 查詢；目前不能視為完整筆記。",
+                line_messages.partial(
+                    capture_id,
+                    personal=self.personal,
+                    destination="drive" if self.personal else "notion",
+                ),
                 key="partial:" + capture_id,
             )
